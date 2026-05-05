@@ -236,27 +236,51 @@ export default function LoanForecast() {
           <table className="data-table">
             <thead>
               <tr>
-                {['Month','Disbursed #','Disbursed $','Loan Book','Interest','Orig. Fees','Revenue','Credit Loss','Op. Cost','Profit','NIM'].map(h => (
-                  <th key={h}>{h}</th>
-                ))}
+                <th style={{ textAlign: 'left' }}>Metric</th>
+                {data.map((row, i) => <th key={i}>{row.label}</th>)}
               </tr>
             </thead>
             <tbody>
-              {data.map((row, i) => (
-                <tr key={i}>
-                  <td style={{ color: 'var(--text)', fontWeight: 500 }}>{row.label}</td>
-                  <td>{fmtNum(row.disbursements)}</td>
-                  <td>{fmt(row.newDisbursedAmount)}</td>
-                  <td style={{ color: 'var(--accent)' }}>{fmt(row.portfolioBalance)}</td>
-                  <td>{fmt(row.interestIncome)}</td>
-                  <td>{fmt(row.originationFees)}</td>
-                  <td style={{ color: 'var(--accent)' }}>{fmt(row.grossRevenue)}</td>
-                  <td style={{ color: 'var(--red)' }}>{fmt(row.netCreditLoss)}</td>
-                  <td>{fmt(row.operatingCost)}</td>
-                  <td style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(row.profit)}</td>
-                  <td style={{ color: 'var(--green)' }}>{fmtPct(row.nim)}</td>
-                </tr>
-              ))}
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Disbursed #</td>
+                {data.map((row, i) => <td key={i}>{fmtNum(row.disbursements)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Disbursed $</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.newDisbursedAmount)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Loan Book</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.portfolioBalance)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Interest Income</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.interestIncome)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Orig. Fees</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.originationFees)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Revenue</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.grossRevenue)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Credit Loss</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--red)' }}>{fmt(row.netCreditLoss)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Op. Cost</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.operatingCost)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Profit</td>
+                {data.map((row, i) => <td key={i} style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(row.profit)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>NIM</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--green)' }}>{fmtPct(row.nim)}</td>)}
+              </tr>
             </tbody>
           </table>
         </div>

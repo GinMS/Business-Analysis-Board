@@ -212,25 +212,43 @@ export default function WalletForecast() {
           <table className="data-table">
             <thead>
               <tr>
-                {['Month','Users','New Users','GMV','Revenue','Acq. Cost','Op. Cost','Profit','Margin'].map(h => (
-                  <th key={h}>{h}</th>
-                ))}
+                <th style={{ textAlign: 'left' }}>Metric</th>
+                {data.map((row, i) => <th key={i}>{row.label}</th>)}
               </tr>
             </thead>
             <tbody>
-              {data.map((row, i) => (
-                <tr key={i}>
-                  <td style={{ color: 'var(--text)', fontWeight: 500 }}>{row.label}</td>
-                  <td>{fmtNum(row.users)}</td>
-                  <td style={{ color: 'var(--green)' }}>+{fmtNum(row.newUsers)}</td>
-                  <td>{fmt(row.gmv)}</td>
-                  <td style={{ color: 'var(--accent)' }}>{fmt(row.revenue)}</td>
-                  <td style={{ color: 'var(--amber)' }}>{fmt(row.acquisitionCost)}</td>
-                  <td>{fmt(row.operatingCost)}</td>
-                  <td style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(row.profit)}</td>
-                  <td style={{ color: row.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{row.margin.toFixed(1)}%</td>
-                </tr>
-              ))}
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Users</td>
+                {data.map((row, i) => <td key={i}>{fmtNum(row.users)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>New Users</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--green)' }}>+{fmtNum(row.newUsers)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>GMV</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.gmv)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Revenue</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.revenue)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Acq. Cost</td>
+                {data.map((row, i) => <td key={i} style={{ color: 'var(--amber)' }}>{fmt(row.acquisitionCost)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Op. Cost</td>
+                {data.map((row, i) => <td key={i}>{fmt(row.operatingCost)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Profit</td>
+                {data.map((row, i) => <td key={i} style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(row.profit)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Margin</td>
+                {data.map((row, i) => <td key={i} style={{ color: row.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{row.margin.toFixed(1)}%</td>)}
+              </tr>
             </tbody>
           </table>
         </div>

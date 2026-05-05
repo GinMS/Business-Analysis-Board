@@ -346,25 +346,31 @@ export default function UnitCalculation() {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Scenario</th>
-                <th>Revenue/Unit</th>
-                <th>Cost/Unit</th>
-                <th>Profit/Unit</th>
-                <th>Margin</th>
-                <th>Monthly Profit ({(monthlyUnits/1000).toFixed(0)}K units)</th>
+                <th style={{ textAlign: 'left' }}>Metric</th>
+                {scenarioData.map((s, i) => <th key={i}>{s.name}</th>)}
               </tr>
             </thead>
             <tbody>
-              {scenarioData.map((s, i) => (
-                <tr key={i}>
-                  <td style={{ fontWeight: 600 }}>{s.name}</td>
-                  <td style={{ color: 'var(--accent)' }}>{fmt(s.revenue)}</td>
-                  <td style={{ color: 'var(--red)' }}>{fmt(s.cost)}</td>
-                  <td style={{ color: s.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(s.profit)}</td>
-                  <td style={{ color: s.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPct(s.margin)}</td>
-                  <td style={{ color: s.profit * monthlyUnits >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPretty(s.profit * monthlyUnits)}</td>
-                </tr>
-              ))}
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Revenue / Unit</td>
+                {scenarioData.map((s, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(s.revenue)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Cost / Unit</td>
+                {scenarioData.map((s, i) => <td key={i} style={{ color: 'var(--red)' }}>{fmt(s.cost)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Profit / Unit</td>
+                {scenarioData.map((s, i) => <td key={i} style={{ color: s.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(s.profit)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Margin</td>
+                {scenarioData.map((s, i) => <td key={i} style={{ color: s.margin >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPct(s.margin)}</td>)}
+              </tr>
+              <tr>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Monthly Profit ({(monthlyUnits/1000).toFixed(0)}K units)</td>
+                {scenarioData.map((s, i) => <td key={i} style={{ color: s.profit * monthlyUnits >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtPretty(s.profit * monthlyUnits)}</td>)}
+              </tr>
             </tbody>
           </table>
         </div>

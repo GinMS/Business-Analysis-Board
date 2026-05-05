@@ -216,6 +216,10 @@
 
 .data-table th:first-child {
   text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 1;
 }
 
 .data-table td {
@@ -228,6 +232,10 @@
 
 .data-table td:first-child {
   text-align: left;
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 1;
 }
 
 .data-table tbody tr:hover td {
