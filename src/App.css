@@ -255,6 +255,17 @@
 
 .btn-sm:hover { opacity: 0.8; }
 
+.btn-export {
+  background: rgba(79, 142, 247, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(79, 142, 247, 0.3);
+}
+
+.btn-export:hover {
+  background: rgba(79, 142, 247, 0.22);
+  opacity: 1;
+}
+
 .btn-green {
   background: rgba(34, 197, 94, 0.15);
   color: var(--green);

@@ -3,6 +3,7 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import { exportCSV, exportExcel } from '../utils/exportData';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -199,8 +200,34 @@ export default function RevenueShare() {
 
       {/* Monthly Breakdown Table — transposed */}
       <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Users', ...data.map(r => r.users)],
+                ['Revenue (RM)', ...data.map(r => r.revenue.toFixed(2))],
+                ['GTV', ...data.map(r => r.gtv.toFixed(2))],
+                ['Nett Revenue', ...data.map(r => r.nettRevenue.toFixed(2))],
+                [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare.toFixed(2))],
+                [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare.toFixed(2))],
+              ];
+              exportCSV('revenue-share', headers, rows);
+            }}>CSV</button>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Users', ...data.map(r => r.users)],
+                ['Revenue (RM)', ...data.map(r => r.revenue)],
+                ['GTV', ...data.map(r => r.gtv)],
+                ['Nett Revenue', ...data.map(r => r.nettRevenue)],
+                [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare)],
+                [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare)],
+              ];
+              exportExcel('revenue-share', headers, rows);
+            }}>Excel</button>
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
@@ -220,7 +247,7 @@ export default function RevenueShare() {
                 {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.revenue)}</td>)}
               </tr>
               <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Gross Transaction Value</td>
+                <td style={{ color: 'var(--text)', fontWeight: 500 }}>GTV</td>
                 {data.map((row, i) => <td key={i} style={{ color: 'var(--accent2)' }}>{fmt(row.gtv)}</td>)}
               </tr>
               <tr>

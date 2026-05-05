@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
+import { exportCSV, exportExcel } from '../utils/exportData';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -205,8 +206,38 @@ export default function WalletForecast() {
 
       {/* Monthly Table */}
       <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Users', ...data.map(r => r.users)],
+                ['New Users', ...data.map(r => r.newUsers)],
+                ['GMV', ...data.map(r => r.gmv.toFixed(2))],
+                ['Revenue', ...data.map(r => r.revenue.toFixed(2))],
+                ['Acq. Cost', ...data.map(r => r.acquisitionCost.toFixed(2))],
+                ['Op. Cost', ...data.map(r => r.operatingCost.toFixed(2))],
+                ['Profit', ...data.map(r => r.profit.toFixed(2))],
+                ['Margin (%)', ...data.map(r => r.margin.toFixed(1))],
+              ];
+              exportCSV('wallet-forecast', headers, rows);
+            }}>CSV</button>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Users', ...data.map(r => r.users)],
+                ['New Users', ...data.map(r => r.newUsers)],
+                ['GMV', ...data.map(r => r.gmv)],
+                ['Revenue', ...data.map(r => r.revenue)],
+                ['Acq. Cost', ...data.map(r => r.acquisitionCost)],
+                ['Op. Cost', ...data.map(r => r.operatingCost)],
+                ['Profit', ...data.map(r => r.profit)],
+                ['Margin (%)', ...data.map(r => r.margin)],
+              ];
+              exportExcel('wallet-forecast', headers, rows);
+            }}>Excel</button>
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">

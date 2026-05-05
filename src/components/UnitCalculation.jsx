@@ -3,6 +3,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
+import { exportCSV, exportExcel } from '../utils/exportData';
 
 const fmt = (n, dec = 2) => `$${Number(n).toFixed(dec)}`;
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`;
@@ -342,7 +343,31 @@ export default function UnitCalculation() {
           <SummaryRow label="Annual Portfolio Profit" value={fmtPretty(metrics.annualProfit)} color={metrics.annualProfit >= 0 ? 'var(--green)' : 'var(--red)'} />
         </div>
         {/* Scenario table */}
-        <div style={{ marginTop: 20, overflowX: 'auto' }}>
+        <div style={{ marginTop: 20, display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...scenarioData.map(s => s.name)];
+            const rows = [
+              ['Revenue / Unit', ...scenarioData.map(s => s.revenue.toFixed(2))],
+              ['Cost / Unit', ...scenarioData.map(s => s.cost.toFixed(2))],
+              ['Profit / Unit', ...scenarioData.map(s => s.profit.toFixed(2))],
+              ['Margin (%)', ...scenarioData.map(s => s.margin.toFixed(1))],
+              [`Monthly Profit (${(monthlyUnits/1000).toFixed(0)}K units)`, ...scenarioData.map(s => (s.profit * monthlyUnits).toFixed(2))],
+            ];
+            exportCSV('unit-economics', headers, rows);
+          }}>CSV</button>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...scenarioData.map(s => s.name)];
+            const rows = [
+              ['Revenue / Unit', ...scenarioData.map(s => s.revenue)],
+              ['Cost / Unit', ...scenarioData.map(s => s.cost)],
+              ['Profit / Unit', ...scenarioData.map(s => s.profit)],
+              ['Margin (%)', ...scenarioData.map(s => s.margin)],
+              [`Monthly Profit (${(monthlyUnits/1000).toFixed(0)}K units)`, ...scenarioData.map(s => s.profit * monthlyUnits)],
+            ];
+            exportExcel('unit-economics', headers, rows);
+          }}>Excel</button>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
               <tr>

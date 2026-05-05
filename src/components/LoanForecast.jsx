@@ -3,6 +3,7 @@ import {
   LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
+import { exportCSV, exportExcel } from '../utils/exportData';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -229,8 +230,42 @@ export default function LoanForecast() {
 
       {/* Monthly Table */}
       <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Disbursed #', ...data.map(r => r.disbursements)],
+                ['Disbursed $', ...data.map(r => r.newDisbursedAmount.toFixed(2))],
+                ['Loan Book', ...data.map(r => r.portfolioBalance.toFixed(2))],
+                ['Interest Income', ...data.map(r => r.interestIncome.toFixed(2))],
+                ['Orig. Fees', ...data.map(r => r.originationFees.toFixed(2))],
+                ['Revenue', ...data.map(r => r.grossRevenue.toFixed(2))],
+                ['Credit Loss', ...data.map(r => r.netCreditLoss.toFixed(2))],
+                ['Op. Cost', ...data.map(r => r.operatingCost.toFixed(2))],
+                ['Profit', ...data.map(r => r.profit.toFixed(2))],
+                ['NIM (%)', ...data.map(r => r.nim.toFixed(2))],
+              ];
+              exportCSV('loan-forecast', headers, rows);
+            }}>CSV</button>
+            <button className="btn-sm btn-export" onClick={() => {
+              const headers = ['Metric', ...data.map(r => r.label)];
+              const rows = [
+                ['Disbursed #', ...data.map(r => r.disbursements)],
+                ['Disbursed $', ...data.map(r => r.newDisbursedAmount)],
+                ['Loan Book', ...data.map(r => r.portfolioBalance)],
+                ['Interest Income', ...data.map(r => r.interestIncome)],
+                ['Orig. Fees', ...data.map(r => r.originationFees)],
+                ['Revenue', ...data.map(r => r.grossRevenue)],
+                ['Credit Loss', ...data.map(r => r.netCreditLoss)],
+                ['Op. Cost', ...data.map(r => r.operatingCost)],
+                ['Profit', ...data.map(r => r.profit)],
+                ['NIM (%)', ...data.map(r => r.nim)],
+              ];
+              exportExcel('loan-forecast', headers, rows);
+            }}>Excel</button>
+          </div>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
