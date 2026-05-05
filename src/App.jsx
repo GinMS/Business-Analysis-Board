@@ -2,6 +2,7 @@ import { useState } from 'react';
 import WalletForecast from './components/WalletForecast';
 import LoanForecast from './components/LoanForecast';
 import UnitCalculation from './components/UnitCalculation';
+import RevenueShare from './components/RevenueShare';
 import './App.css';
 
 const TABS = [
@@ -22,6 +23,12 @@ const TABS = [
     label: 'Unit Calculation',
     subtitle: 'Economics Per Unit',
     icon: '📐',
+  },
+  {
+    id: 'revenue-share',
+    label: 'Revenue Share',
+    subtitle: 'Partner Split Analysis',
+    icon: '🤝',
   },
 ];
 
@@ -81,6 +88,7 @@ export default function App() {
           {activeTab === 'wallet' && <WalletForecast />}
           {activeTab === 'loan' && <LoanForecast />}
           {activeTab === 'unit' && <UnitCalculation />}
+          {activeTab === 'revenue-share' && <RevenueShare />}
         </div>
       </main>
     </div>
