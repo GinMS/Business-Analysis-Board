@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
+import { useLocalStorage } from '../utils/useLocalStorage';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -35,7 +36,7 @@ const fmtNum = (n) =>
 const fmtPct = (n) => `${n.toFixed(1)}%`;
 
 export default function LoanForecast() {
-  const [inputs, setInputs] = useState(defaultInputs);
+  const [inputs, setInputs] = useLocalStorage('ba-loan-inputs', defaultInputs);
   const [activeTab, setActiveTab] = useState('portfolio');
 
   const set = (key, val) => setInputs(prev => ({ ...prev, [key]: Number(val) }));

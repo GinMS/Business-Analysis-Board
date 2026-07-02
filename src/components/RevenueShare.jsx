@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
+import { useLocalStorage } from '../utils/useLocalStorage';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -34,7 +35,7 @@ const fmtNum = (n) =>
   : `${Math.round(n)}`;
 
 export default function RevenueShare() {
-  const [inputs, setInputs] = useState(defaultInputs);
+  const [inputs, setInputs] = useLocalStorage('ba-revenue-share-inputs', defaultInputs);
   const [activeTab, setActiveTab] = useState('split');
 
   const set = (key, val) => setInputs(prev => ({ ...prev, [key]: Number(val) }));

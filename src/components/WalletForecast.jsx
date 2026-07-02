@@ -4,6 +4,7 @@ import {
   Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
+import { useLocalStorage } from '../utils/useLocalStorage';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -33,7 +34,7 @@ const fmtNum = (n) =>
   n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`;
 
 export default function WalletForecast() {
-  const [inputs, setInputs] = useState(defaultInputs);
+  const [inputs, setInputs] = useLocalStorage('ba-wallet-inputs', defaultInputs);
   const [activeTab, setActiveTab] = useState('overview');
 
   const set = (key, val) => setInputs(prev => ({ ...prev, [key]: Number(val) }));

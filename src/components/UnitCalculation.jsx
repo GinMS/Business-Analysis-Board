@@ -4,6 +4,7 @@ import {
   ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
+import { useLocalStorage } from '../utils/useLocalStorage';
 
 const fmt = (n, dec = 2) => `$${Number(n).toFixed(dec)}`;
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`;
@@ -35,10 +36,10 @@ const defaultScenarios = [
 let nextId = 10;
 
 export default function UnitCalculation() {
-  const [revenues, setRevenues] = useState(defaultRevenue);
-  const [costs, setCosts] = useState(defaultCosts);
-  const [unitLabel, setUnitLabel] = useState('per Active User / Month');
-  const [monthlyUnits, setMonthlyUnits] = useState(100000);
+  const [revenues, setRevenues] = useLocalStorage('ba-unit-revenues', defaultRevenue);
+  const [costs, setCosts] = useLocalStorage('ba-unit-costs', defaultCosts);
+  const [unitLabel, setUnitLabel] = useLocalStorage('ba-unit-label', 'per Active User / Month');
+  const [monthlyUnits, setMonthlyUnits] = useLocalStorage('ba-unit-monthly-units', 100000);
   const [activeView, setActiveView] = useState('waterfall');
 
   const addRevenue = () => setRevenues(prev => [...prev, { id: nextId++, name: 'New Revenue Item', amount: 0, enabled: true }]);

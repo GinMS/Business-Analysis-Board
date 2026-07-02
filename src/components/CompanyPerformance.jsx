@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { exportCSV, exportExcel } from '../utils/exportData';
+import { useLocalStorage } from '../utils/useLocalStorage';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -41,10 +42,10 @@ function makeEmptyRows(months, startMonth, startYear) {
 }
 
 export default function CompanyPerformance() {
-  const [startMonth, setStartMonth] = useState(0);
-  const [startYear,  setStartYear]  = useState(new Date().getFullYear());
-  const [numMonths,  setNumMonths]  = useState(12);
-  const [rows, setRows] = useState(() => makeEmptyRows(12, 0, new Date().getFullYear()));
+  const [startMonth, setStartMonth] = useLocalStorage('ba-company-start-month', 0);
+  const [startYear,  setStartYear]  = useLocalStorage('ba-company-start-year', new Date().getFullYear());
+  const [numMonths,  setNumMonths]  = useLocalStorage('ba-company-num-months', 12);
+  const [rows, setRows] = useLocalStorage('ba-company-rows', makeEmptyRows(12, 0, new Date().getFullYear()));
   const [waterfallMonth, setWaterfallMonth] = useState('total');
   const fileRef = useRef();
 
