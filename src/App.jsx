@@ -7,15 +7,15 @@ import CompanyPerformance from './components/CompanyPerformance';
 import './App.css';
 
 const TABS = [
+  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊' },
   { id: 'wallet',      label: 'Wallet Forecast',       subtitle: 'Business Case — Monthly', icon: '💳' },
   { id: 'loan',        label: 'Loan Forecast',          subtitle: 'Business Case — Monthly', icon: '🏦' },
   { id: 'unit',        label: 'Unit Calculation',       subtitle: 'Economics Per Unit',      icon: '📐' },
   { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝' },
-  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊' },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('wallet');
+  const [activeTab, setActiveTab] = useState('company');
   const active = TABS.find(t => t.id === activeTab);
 
   return (

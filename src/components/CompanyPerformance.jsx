@@ -33,7 +33,16 @@ const fmt = (n) =>
   : Math.abs(n) >= 1e3 ? `${(n / 1e3).toFixed(1)}K`
   : `${Number(n || 0).toFixed(0)}`;
 
+// Always express in millions (rounded) for the Monthly P&L
+const fmtM = (n) => (n ? `${(n / 1e6).toFixed(2)}M` : '0');
+
 const fmtFull = (n) => Number(n || 0).toLocaleString('en-MY', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+// "Jun 2026" -> "Jun'26"
+const shortMonth = (label) => {
+  const [m, y] = String(label).split(' ');
+  return y ? `${m}'${y.slice(2)}` : label;
+};
 
 function makeEmptyRows(months, startMonth, startYear) {
   return Array.from({ length: months }, (_, i) => {
@@ -129,24 +138,37 @@ export default function CompanyPerformance() {
   // ── Waterfall data ─────────────────────────────────────────────────────────
   const waterfallData = useMemo(() => {
     if (waterfallMode === 'profit') {
-      // Base PAT → + each project filler → Total Net Profit
+      // Base PAT → each project floats up to bridge the gap → Total Net Profit.
+      // The Total bar is stacked: Base PAT portion + filler increment (distinct colour).
       const bars = [];
-      let running = totals.pat;
-      bars.push({ name: 'Base PAT', invisible: Math.min(0, running), value: Math.abs(running), type: 'total' });
-      projects.forEach((p, idx) => {
+      const base = totals.pat;
+      let running = base;
+      bars.push({ name: 'Base PAT', invisible: Math.min(0, base), value: Math.abs(base), increment: 0, raw: base, type: 'total' });
+      projects.forEach((p) => {
         const v = projFY(p);
         const start = running;
         const end = running + v;
         bars.push({
           name: p.name,
+          fullLabel: p.name,
           invisible: Math.min(start, end),
           value: Math.abs(v),
-          type: v >= 0 ? 'positive' : 'negative',
-          projIdx: idx,
+          increment: 0,
+          raw: v,
+          type: v >= 0 ? 'filler' : 'negative',
         });
         running = end;
       });
-      bars.push({ name: 'Total Net Profit', invisible: Math.min(0, running), value: Math.abs(running), type: 'total' });
+      // Total Net Profit = base PAT (bottom) + filler increment (top, different colour)
+      bars.push({
+        name: 'Total Net Profit',
+        fullLabel: 'Total Net Profit',
+        invisible: Math.min(0, base),
+        value: Math.abs(base),
+        increment: totals.filler,
+        raw: running,
+        type: 'total',
+      });
       return bars;
     }
     // Monthly bridge: each month is a floating step building to the FY total
@@ -157,16 +179,17 @@ export default function CompanyPerformance() {
       const start = cumulative;
       const end = cumulative + v;
       bars.push({
-        name: r.label.replace(' ', "'").slice(0, 6),
+        name: shortMonth(r.label),
         fullLabel: r.label,
         invisible: Math.min(start, end),
         value: Math.abs(v),
+        increment: 0,
         raw: v,
         type: v >= 0 ? 'positive' : 'negative',
       });
       cumulative = end;
     });
-    bars.push({ name: 'FY Total', fullLabel: 'FY Total', invisible: Math.min(0, cumulative), value: Math.abs(cumulative), raw: cumulative, type: 'total' });
+    bars.push({ name: 'FY Total', fullLabel: 'FY Total', invisible: Math.min(0, cumulative), value: Math.abs(cumulative), increment: 0, raw: cumulative, type: 'total' });
     return bars;
   }, [waterfallMode, waterfallMetric, computed, projects, totals]);
 
@@ -421,7 +444,7 @@ export default function CompanyPerformance() {
                 cursor={{ fill: 'rgba(0,0,0,0.03)' }}
                 contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 formatter={(v, name, props) => {
-                  if (name === 'invisible') return null;
+                  if (name !== 'value') return null;
                   const raw = props.payload.raw;
                   const shown = raw !== undefined ? raw : props.payload.value;
                   return [fmtFull(shown), props.payload.fullLabel || props.payload.name];
@@ -430,22 +453,28 @@ export default function CompanyPerformance() {
               />
               <ReferenceLine y={0} stroke="var(--border)" strokeWidth={2} />
               <Bar dataKey="invisible" stackId="wf" fill="transparent" legendType="none" />
-              <Bar dataKey="value" stackId="wf" radius={[4, 4, 0, 0]} legendType="none">
+              <Bar dataKey="value" stackId="wf" radius={[0, 0, 0, 0]} legendType="none" isAnimationActive={false}>
                 {waterfallData.map((entry, i) => (
                   <Cell
                     key={i}
                     fill={
                       entry.type === 'total'    ? '#3b7ff5' :
-                      entry.type === 'positive' ? '#16a34a' : '#dc2626'
+                      entry.type === 'positive' ? '#16a34a' :
+                      entry.type === 'filler'   ? '#f59e0b' : '#dc2626'
                     }
                     fillOpacity={entry.type === 'total' ? 0.9 : 1}
                   />
                 ))}
               </Bar>
+              {/* Filler increment stacked on top of the Total Net Profit bar */}
+              <Bar dataKey="increment" stackId="wf" radius={[4, 4, 0, 0]} fill="#f59e0b" legendType="none" isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
-            {[['#16a34a','Increase'],['#dc2626','Decrease'],['#3b7ff5','Total / Subtotal']].map(([color, label]) => (
+            {(waterfallMode === 'profit'
+              ? [['#3b7ff5','Base PAT / Total'],['#f59e0b','Project Fillers'],['#dc2626','Decrease']]
+              : [['#16a34a','Increase'],['#dc2626','Decrease'],['#3b7ff5','Total / Subtotal']]
+            ).map(([color, label]) => (
               <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
                 <span style={{ width: 12, height: 12, borderRadius: 3, background: color, display: 'inline-block' }} />
                 {label}
@@ -515,17 +544,28 @@ function PLInputRow({ row, rows, setCell, total }) {
       <td style={{ color: row.color, fontWeight: 600 }}>{row.label}</td>
       {rows.map((r, ri) => (
         <td key={ri} style={{ padding: '6px 8px' }}>
-          <input
-            className="cell-input"
-            type="number"
-            value={r[row.key] || ''}
-            placeholder="0"
-            onChange={e => setCell(ri, row.key, e.target.value)}
-          />
+          <MoneyCell value={r[row.key]} onChange={val => setCell(ri, row.key, val)} />
         </td>
       ))}
-      <td style={{ color: row.color, fontWeight: 700 }}>{fmt(total)}</td>
+      <td style={{ color: row.color, fontWeight: 700 }}>{fmtM(total)}</td>
     </tr>
+  );
+}
+
+// Editable cell: shows the value in millions (e.g. 1.05M); reveals the raw
+// number for editing while focused so the underlying figure stays precise.
+function MoneyCell({ value, onChange }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <input
+      className="cell-input"
+      type={focused ? 'number' : 'text'}
+      value={focused ? (value || '') : fmtM(value)}
+      placeholder="0"
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onChange={e => onChange(e.target.value)}
+    />
   );
 }
 
@@ -534,9 +574,9 @@ function PLCalcRow({ label, color, values, total, bold, indent }) {
     <tr>
       <td style={{ color, fontWeight: bold ? 700 : 600, paddingLeft: indent ? 28 : undefined }}>{label}</td>
       {values.map((v, i) => (
-        <td key={i} style={{ color: bold ? color : 'var(--text)', fontWeight: bold ? 600 : 400 }}>{fmt(v)}</td>
+        <td key={i} style={{ color: bold ? color : 'var(--text)', fontWeight: bold ? 600 : 400 }}>{fmtM(v)}</td>
       ))}
-      <td style={{ color, fontWeight: 700 }}>{fmt(total)}</td>
+      <td style={{ color, fontWeight: 700 }}>{fmtM(total)}</td>
     </tr>
   );
 }
