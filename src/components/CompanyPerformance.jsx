@@ -649,7 +649,7 @@ export default function CompanyPerformance() {
                 labelFormatter={() => ''}
               />
               <ReferenceLine y={0} stroke="var(--border)" strokeWidth={2} />
-              {assumptions.endYearTarget > 0 && (
+              {assumptions.endYearTarget !== 0 && (
                 <ReferenceLine
                   y={assumptions.endYearTarget}
                   stroke="#e11d48"
