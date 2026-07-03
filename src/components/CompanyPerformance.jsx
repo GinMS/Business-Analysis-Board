@@ -654,7 +654,8 @@ export default function CompanyPerformance() {
                   y={assumptions.endYearTarget}
                   stroke="#e11d48"
                   strokeDasharray="6 4"
-                  strokeWidth={1.5}
+                  strokeWidth={2}
+                  ifOverflow="extendDomain"
                   label={{ value: `Target ${fmt(assumptions.endYearTarget)}`, position: 'insideTopLeft', fill: '#e11d48', fontSize: 11, fontWeight: 600 }}
                 />
               )}
