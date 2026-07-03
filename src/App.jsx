@@ -18,6 +18,16 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('company');
   const active = TABS.find(t => t.id === activeTab);
 
+  const resetAllData = () => {
+    if (!window.confirm('Erase all saved data and reset every tab to its defaults? This cannot be undone.')) return;
+    try {
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('ba-'))
+        .forEach(k => localStorage.removeItem(k));
+    } catch { /* ignore */ }
+    window.location.reload();
+  };
+
   return (
     <div className="app-shell">
       {/* Sidebar */}
@@ -50,6 +60,17 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          <button
+            onClick={resetAllData}
+            title="Erase all saved data on every tab and reset to defaults"
+            style={{
+              width: '100%', padding: '8px 10px', marginBottom: 10, fontSize: 12, fontWeight: 600,
+              color: 'var(--red)', background: 'transparent', border: '1px solid var(--border)',
+              borderRadius: 8, cursor: 'pointer',
+            }}
+          >
+            ↺ Reset all data
+          </button>
           <div style={{ fontSize: 11, color: 'var(--muted)' }}>All calculations live</div>
           <div style={{ fontSize: 11, color: 'var(--muted)' }}>and update in real time</div>
         </div>
