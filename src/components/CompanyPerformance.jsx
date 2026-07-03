@@ -501,8 +501,8 @@ export default function CompanyPerformance() {
           <Field label="Interest Expense / month (RM)">
             <input className="input" type="number" value={assumptions.interestPerMonth} onChange={e => setAssume('interestPerMonth', e.target.value)} />
           </Field>
-          <Field label="End-Year Target (RM)">
-            <input className="input" type="number" value={assumptions.endYearTarget} onChange={e => setAssume('endYearTarget', e.target.value)} />
+          <Field label="End-Year Target (M)">
+            <MillionsInput value={assumptions.endYearTarget} onChange={v => setAssume('endYearTarget', v)} />
           </Field>
         </div>
 
@@ -638,13 +638,11 @@ export default function CompanyPerformance() {
             )}
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
               <span style={{ display: 'inline-block', width: 10, height: 0, borderTop: '2px dashed #e11d48' }} />
-              Target
-              <input
-                type="number"
-                className="input"
-                style={{ width: 120, padding: '5px 8px', fontSize: 12 }}
+              Target (M)
+              <MillionsInput
                 value={assumptions.endYearTarget}
-                onChange={e => setAssume('endYearTarget', e.target.value)}
+                onChange={v => setAssume('endYearTarget', v)}
+                style={{ width: 110, padding: '5px 8px', fontSize: 12 }}
                 placeholder="0"
               />
             </label>
@@ -784,6 +782,27 @@ function PLInputRow({ row, rows, setCell, total }) {
       ))}
       <td style={{ color: row.color, fontWeight: 700 }}>{fmtM(total)}</td>
     </tr>
+  );
+}
+
+// Number input expressed in millions: the user types 8 or -24.55 and the
+// stored value is in full ringgit (8_000_000 / -24_550_000).
+function MillionsInput({ value, onChange, style, placeholder }) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState('');
+  const asM = (v) => (v ? String(+(v / 1e6).toFixed(6)) : '');
+  return (
+    <input
+      type="number"
+      className="input"
+      style={style}
+      step="0.01"
+      placeholder={placeholder}
+      value={focused ? text : asM(value)}
+      onFocus={() => { setFocused(true); setText(asM(value)); }}
+      onChange={e => { setText(e.target.value); onChange((Number(e.target.value) || 0) * 1e6); }}
+      onBlur={() => setFocused(false)}
+    />
   );
 }
 
