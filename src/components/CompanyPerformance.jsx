@@ -45,6 +45,110 @@ const shortMonth = (label) => {
   return y ? `${m}'${y.slice(2)}` : label;
 };
 
+// ── Excel import parsing (tolerant of layout / naming) ───────────────────────
+const METRIC_ALIASES = {
+  netRevenue:      ['net revenue', 'netrevenue', 'net rev', 'net sales', 'revenue', 'total revenue', 'income'],
+  opex:            ['opex', 'operating expense', 'operating expenses', 'operating cost', 'operating costs', 'total opex'],
+  interestExpense: ['interest expense', 'interest exp', 'finance cost', 'finance costs', 'interest'],
+  da:              ['d&a', 'd & a', 'da', 'depreciation', 'depreciation & amortisation', 'depreciation and amortization', 'amortisation', 'amortization'],
+};
+const METRIC_LABELS = { netRevenue: 'Net Revenue', opex: 'Opex', interestExpense: 'Interest Expense', da: 'D&A' };
+
+const norm = (s) => String(s ?? '').trim().toLowerCase();
+const matchMetric = (s) => {
+  const n = norm(s);
+  if (!n) return null;
+  for (const [k, al] of Object.entries(METRIC_ALIASES)) if (al.some(a => n === a)) return k;
+  for (const [k, al] of Object.entries(METRIC_ALIASES)) if (al.some(a => n.startsWith(a))) return k;
+  // loose contains — skip aliases shorter than 4 chars to avoid accidents (e.g. "da")
+  for (const [k, al] of Object.entries(METRIC_ALIASES)) if (al.some(a => a.length >= 4 && n.includes(a))) return k;
+  return null;
+};
+const isMonthCell = (s) => {
+  const n = norm(s);
+  if (!n || /\b(fy|total|forecast|metric|budget|actual|variance)\b/.test(n)) return false;
+  return /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|\d{1,2}[-/.]\d{1,4}|'\d{2}/.test(n);
+};
+const toNum = (v) => {
+  if (v == null || v === '') return 0;
+  let s = String(v).trim();
+  const neg = /^\(.*\)$/.test(s); // accounting negatives (1,234)
+  s = s.replace(/[()]/g, '').replace(/[^0-9.\-]/g, '');
+  const num = Number(s);
+  if (isNaN(num)) return 0;
+  return neg ? -num : num;
+};
+
+function detectTransposed(aoa) {
+  let labelCol = 0, bestCount = 0;
+  for (let c = 0; c < 4; c++) {
+    const cnt = aoa.reduce((s, r) => s + (matchMetric(r && r[c]) ? 1 : 0), 0);
+    if (cnt > bestCount) { bestCount = cnt; labelCol = c; }
+  }
+  if (bestCount === 0) return null;
+  let headerRow = 0, bestMonths = 0;
+  for (let r = 0; r < Math.min(5, aoa.length); r++) {
+    const cnt = (aoa[r] || []).reduce((s, v, c) => s + (c !== labelCol && isMonthCell(v) ? 1 : 0), 0);
+    if (cnt > bestMonths) { bestMonths = cnt; headerRow = r; }
+  }
+  const hdr = aoa[headerRow] || [];
+  let colIdx = [];
+  for (let c = 0; c < hdr.length; c++) if (c !== labelCol && isMonthCell(hdr[c])) colIdx.push(c);
+  if (!colIdx.length) {
+    for (let c = 0; c < hdr.length; c++) if (c !== labelCol && hdr[c] != null && !/fy|total/.test(norm(hdr[c]))) colIdx.push(c);
+  }
+  const months = colIdx.map(c => String(hdr[c] ?? ''));
+  const byMetric = {}; const matched = [];
+  aoa.forEach((r, ri) => {
+    if (ri === headerRow) return;
+    const key = matchMetric(r && r[labelCol]);
+    if (key && !byMetric[key]) { byMetric[key] = colIdx.map(c => toNum(r[c])); matched.push(key); }
+  });
+  return { months, byMetric, matchedKeys: matched, orientation: 'metrics as rows' };
+}
+
+function detectStandard(aoa) {
+  let headerRow = 0, bestCount = 0;
+  for (let r = 0; r < Math.min(5, aoa.length); r++) {
+    const cnt = (aoa[r] || []).reduce((s, v) => s + (matchMetric(v) ? 1 : 0), 0);
+    if (cnt > bestCount) { bestCount = cnt; headerRow = r; }
+  }
+  if (bestCount === 0) return null;
+  const hdr = aoa[headerRow] || [];
+  const metricCol = {}; const matched = [];
+  let monthCol = -1;
+  hdr.forEach((h, c) => {
+    const key = matchMetric(h);
+    if (key && metricCol[key] === undefined) { metricCol[key] = c; matched.push(key); }
+    else if (monthCol < 0 && /month|period|date/.test(norm(h))) monthCol = c;
+  });
+  if (monthCol < 0) monthCol = 0;
+  const dataRows = aoa.slice(headerRow + 1).filter(r => r && r.some(v => v != null && v !== ''));
+  const months = dataRows.map((r, i) => {
+    const l = r[monthCol];
+    return (l != null && String(l).trim()) ? String(l) : `Month ${i + 1}`;
+  });
+  const byMetric = {};
+  Object.entries(metricCol).forEach(([key, c]) => { byMetric[key] = dataRows.map(r => toNum(r[c])); });
+  return { months, byMetric, matchedKeys: matched, orientation: 'metrics as columns' };
+}
+
+// Scan every sheet in both orientations; return the parse with the most matches.
+function parseWorkbook(wb) {
+  let best = null;
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false, raw: false });
+    if (!aoa.length) continue;
+    for (const cand of [detectTransposed(aoa), detectStandard(aoa)]) {
+      if (!cand || !cand.months.length || !cand.matchedKeys.length) continue;
+      if (!best || cand.matchedKeys.length > best.matchedKeys.length) best = { ...cand, sheet: name };
+    }
+  }
+  return best;
+}
+
 function makeEmptyRows(months, startMonth, startYear) {
   return Array.from({ length: months }, (_, i) => {
     const mIdx = (startMonth + i) % 12;
@@ -72,6 +176,7 @@ export default function CompanyPerformance() {
   ]);
   const [waterfallMode, setWaterfallMode] = useState('monthly'); // 'monthly' | 'profit'
   const [waterfallMetric, setWaterfallMetric] = useState('totalNetProfit');
+  const [importStatus, setImportStatus] = useState(null); // { ok, text }
   const fileRef = useRef();
 
   const setAssume = (key, val) => setAssumptions(prev => ({ ...prev, [key]: Number(val) || 0 }));
@@ -198,7 +303,7 @@ export default function CompanyPerformance() {
     totalNetProfit: 'Total Net Profit', pat: 'PAT', netRevenue: 'Net Revenue', ebitda: 'EBITDA',
   }[waterfallMetric];
 
-  // ── Excel import (auto-detects layout: metrics-as-rows or metrics-as-columns)
+  // ── Excel import (scans all sheets, auto-detects layout, reports what it found)
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -206,96 +311,36 @@ export default function CompanyPerformance() {
     reader.onload = (evt) => {
       try {
         const wb = XLSX.read(evt.target.result, { type: 'array' });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false });
-        if (!aoa.length) return;
+        const best = parseWorkbook(wb);
 
-        const METRIC_ALIASES = {
-          netRevenue:      ['net revenue', 'netrevenue', 'net rev', 'revenue'],
-          opex:            ['opex', 'operating expense', 'operating expenses', 'operating cost'],
-          interestExpense: ['interest expense', 'interest exp', 'interest exp.', 'interest'],
-          da:              ['d&a', 'da', 'depreciation', 'depreciation & amortisation', 'depreciation and amortization'],
-        };
-        const norm = (s) => String(s ?? '').trim().toLowerCase();
-        const matchMetric = (s) => {
-          const n = norm(s);
-          if (!n) return null;
-          for (const [key, aliases] of Object.entries(METRIC_ALIASES)) {
-            if (aliases.some(a => n === a || n.startsWith(a))) return key;
-          }
-          return null;
-        };
-        const isMonthCell = (s) => {
-          const n = norm(s);
-          if (!n || /fy|total|forecast|metric/.test(n)) return false;
-          return /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|\d{1,2}[-/]\d{2}|'\d{2}/.test(n);
-        };
-        const toNum = (v) => {
-          if (v == null || v === '') return 0;
-          const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
-          return isNaN(n) ? 0 : n;
-        };
-
-        const row0 = aoa[0] || [];
-        const col0 = aoa.map(r => (r ? r[0] : null));
-        const metricsInCol0 = col0.filter(matchMetric).length;
-        const metricsInRow0 = row0.filter(matchMetric).length;
-
-        let months = [];
-        const byMetric = {};
-
-        if (metricsInCol0 > 0 && metricsInCol0 >= metricsInRow0) {
-          // Transposed: metrics down column 0, months across row 0 (matches the dashboard layout)
-          const colIdx = [];
-          for (let c = 1; c < row0.length; c++) {
-            if (isMonthCell(row0[c])) colIdx.push(c);
-          }
-          if (!colIdx.length) {
-            for (let c = 1; c < row0.length; c++) if (!/fy|total/.test(norm(row0[c]))) colIdx.push(c);
-          }
-          months = colIdx.map(c => String(row0[c] ?? ''));
-          aoa.forEach(r => {
-            const key = matchMetric(r && r[0]);
-            if (key && !byMetric[key]) byMetric[key] = colIdx.map(c => toNum(r[c]));
+        if (!best) {
+          setImportStatus({
+            ok: false,
+            text: `Couldn't find any P&L figures in "${file.name}". The sheet needs rows or columns named Net Revenue, Opex, Interest Expense or D&A (with month labels). Click ↓ Template to see the exact layout.`,
           });
-        } else {
-          // Standard: metrics across row 0, one month per subsequent row
-          const metricCol = {};
-          let monthCol = 0;
-          row0.forEach((h, c) => {
-            const key = matchMetric(h);
-            if (key && metricCol[key] === undefined) metricCol[key] = c;
-            else if (/month|period|date/.test(norm(h))) monthCol = c;
-          });
-          const dataRows = aoa.slice(1).filter(r => r && r.some(v => v != null && v !== ''));
-          months = dataRows.map((r, i) => {
-            const lbl = r[monthCol];
-            return lbl != null && String(lbl).trim() ? String(lbl) : (rows[i]?.label ?? `Month ${i + 1}`);
-          });
-          Object.entries(metricCol).forEach(([key, c]) => {
-            byMetric[key] = dataRows.map(r => toNum(r[c]));
-          });
-        }
-
-        const n = months.length;
-        if (!n || Object.keys(byMetric).length === 0) {
-          alert('Could not read any P&L figures from that file. Expected rows/columns named Net Revenue, Opex, Interest Expense and D&A. Try the Template button for the exact layout.');
-          e.target.value = '';
           return;
         }
 
+        const n = best.months.length;
         const imported = Array.from({ length: n }, (_, i) => ({
-          label:           months[i] || (rows[i]?.label ?? `Month ${i + 1}`),
-          netRevenue:      byMetric.netRevenue?.[i]      ?? 0,
-          opex:            byMetric.opex?.[i]            ?? 0,
-          interestExpense: byMetric.interestExpense?.[i] ?? 0,
-          da:              byMetric.da?.[i]              ?? 0,
+          label:           best.months[i] || (rows[i]?.label ?? `Month ${i + 1}`),
+          netRevenue:      best.byMetric.netRevenue?.[i]      ?? 0,
+          opex:            best.byMetric.opex?.[i]            ?? 0,
+          interestExpense: best.byMetric.interestExpense?.[i] ?? 0,
+          da:              best.byMetric.da?.[i]              ?? 0,
         }));
-
         setRows(imported);
-        setNumMonths(imported.length);
+        setNumMonths(n);
+
+        const missing = Object.keys(METRIC_LABELS).filter(k => !best.matchedKeys.includes(k));
+        setImportStatus({
+          ok: true,
+          text: `Imported ${n} month${n === 1 ? '' : 's'} from sheet "${best.sheet}" (${best.orientation}). `
+            + `Matched: ${best.matchedKeys.map(k => METRIC_LABELS[k]).join(', ')}.`
+            + (missing.length ? ` Not found (set to 0): ${missing.map(k => METRIC_LABELS[k]).join(', ')}.` : ''),
+        });
       } catch (err) {
-        alert('Sorry, that file could not be read as an Excel workbook.');
+        setImportStatus({ ok: false, text: `Sorry, "${file.name}" could not be read as an Excel workbook.` });
       } finally {
         e.target.value = '';
       }
@@ -399,6 +444,16 @@ export default function CompanyPerformance() {
         <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
           <strong>Generate</strong> compounds Month-1 values by the growth rate across all months. EBITDA = Net Revenue − Opex; PAT = EBITDA − D&A − Interest. Edit any cell below to override. <strong>Import</strong> reads Net Revenue, Opex, Interest Expense and D&A in either layout — metrics as rows or as columns.
         </div>
+        {importStatus && (
+          <div style={{
+            marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: 12,
+            background: importStatus.ok ? 'rgba(22,163,74,0.08)' : 'rgba(220,38,38,0.08)',
+            color: importStatus.ok ? '#16a34a' : '#dc2626',
+            border: `1px solid ${importStatus.ok ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.25)'}`,
+          }}>
+            {importStatus.ok ? '✓ ' : '⚠ '}{importStatus.text}
+          </div>
+        )}
       </div>
 
       {/* Gap Fillers by Project */}
