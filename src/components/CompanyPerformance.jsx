@@ -611,6 +611,18 @@ export default function CompanyPerformance() {
                 <option value="netRevenue">Net Revenue</option>
               </select>
             )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+              <span style={{ display: 'inline-block', width: 10, height: 0, borderTop: '2px dashed #e11d48' }} />
+              Target
+              <input
+                type="number"
+                className="input"
+                style={{ width: 120, padding: '5px 8px', fontSize: 12 }}
+                value={assumptions.endYearTarget}
+                onChange={e => setAssume('endYearTarget', e.target.value)}
+                placeholder="0"
+              />
+            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}>
               <input type="checkbox" checked={showValues} onChange={e => setShowValues(e.target.checked)} />
               Show values
