@@ -327,6 +327,31 @@ export default function CompanyPerformance() {
     totalNetProfit: 'Total Net Profit', pat: 'PAT', netRevenue: 'Net Revenue', ebitda: 'EBITDA',
   }[waterfallMetric];
 
+  // Keep 0 as the fixed baseline: the axis always includes zero, extends only
+  // toward whichever sign the data (and target) actually reach.
+  const zeroAnchoredDomain = (values) => {
+    let min = 0, max = 0;
+    values.forEach(v => { if (v < min) min = v; if (v > max) max = v; });
+    const span = (max - min) || 1;
+    const pad = span * 0.08;
+    return [min < 0 ? min - pad : 0, max > 0 ? max + pad : 0];
+  };
+
+  const wfDomain = useMemo(() => {
+    const pts = [];
+    waterfallData.forEach(d => {
+      pts.push(d.invisible, d.invisible + d.value + (d.increment || 0));
+    });
+    if (assumptions.endYearTarget) pts.push(assumptions.endYearTarget);
+    return zeroAnchoredDomain(pts);
+  }, [waterfallData, assumptions.endYearTarget]);
+
+  const trendDomain = useMemo(() => {
+    const pts = [];
+    computed.forEach(r => pts.push(r.netRevenue, r.ebitda, r.pat, r.totalNetProfit));
+    return zeroAnchoredDomain(pts);
+  }, [computed]);
+
   // ── Excel import (scans all sheets, auto-detects layout, reports what it found)
   const handleImport = (e) => {
     const file = e.target.files[0];
@@ -636,7 +661,7 @@ export default function CompanyPerformance() {
             <BarChart data={waterfallData} margin={{ top: 24, right: 20, left: 20, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval={0} angle={waterfallData.length > 8 ? -35 : 0} textAnchor={waterfallData.length > 8 ? 'end' : 'middle'} height={waterfallData.length > 8 ? 60 : 30} />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} tickFormatter={v => fmt(v)} />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} tickFormatter={v => fmt(v)} domain={wfDomain} allowDataOverflow />
               <Tooltip
                 cursor={{ fill: 'rgba(0,0,0,0.03)' }}
                 contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
@@ -704,7 +729,7 @@ export default function CompanyPerformance() {
             <LineChart data={computed}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
               <XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval={Math.floor(computed.length / 6)} />
-              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} tickFormatter={v => fmt(v)} />
+              <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} tickFormatter={v => fmt(v)} domain={trendDomain} allowDataOverflow />
               <Tooltip contentStyle={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8 }} formatter={v => fmtFull(v)} />
               <Legend />
               <ReferenceLine y={0} stroke="var(--border)" strokeDasharray="3 3" />
