@@ -231,10 +231,22 @@ export default function CompanyPerformance() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, [key]: key === 'name' ? val : Number(val) || 0 } : p));
   };
   const removeProject = (id) => setProjects(prev => prev.filter(p => p.id !== id));
+  const resetProjectOverrides = (id) => setProjects(prev => prev.map(p => p.id === id ? { ...p, overrides: {} } : p));
 
-  // Contribution of a project in a given month index
-  const projAmt = (p, i) => (i >= p.startIdx ? p.amount : 0);
-  const projFY = (p) => p.amount * Math.max(0, rows.length - p.startIdx);
+  // Contribution of a project in a given month index.
+  // A per-month override (set by editing the grid) wins over the amount/start config.
+  const projAmt = (p, i) => {
+    if (p.overrides && Object.prototype.hasOwnProperty.call(p.overrides, i)) return Number(p.overrides[i]) || 0;
+    return i >= p.startIdx ? p.amount : 0;
+  };
+  const projFY = (p) => rows.reduce((s, _r, i) => s + projAmt(p, i), 0);
+
+  // Manually override a single project's month from the P&L grid.
+  const setProjectCell = (id, monthIdx, value) => {
+    setProjects(prev => prev.map(p => p.id === id
+      ? { ...p, overrides: { ...(p.overrides || {}), [monthIdx]: Number(value) || 0 } }
+      : p));
+  };
 
   // ── Computed P&L (derived EBITDA / PAT + fillers) ──────────────────────────
   const computed = useMemo(() => rows.map((r, i) => {
@@ -517,9 +529,17 @@ export default function CompanyPerformance() {
               <Field label="FY Contribution">
                 <div style={{ fontSize: 14, fontWeight: 700, color: PROJECT_COLORS[idx % PROJECT_COLORS.length], padding: '8px 0' }}>{fmt(projFY(p))}</div>
               </Field>
+              {p.overrides && Object.keys(p.overrides).length > 0 && (
+                <button className="btn-sm btn-export" style={{ marginBottom: 2 }} onClick={() => resetProjectOverrides(p.id)} title="Clear manual monthly edits and use the amount/start above">
+                  ↺ Reset months
+                </button>
+              )}
               <button className="btn-sm btn-export" style={{ marginBottom: 2 }} onClick={() => removeProject(p.id)}>Remove</button>
             </div>
           ))}
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            Tip: set a monthly amount & start month here for a quick baseline, or type directly into a project's cells in the Monthly P&L below to override individual months.
+          </div>
         </div>
       </div>
 
@@ -553,16 +573,17 @@ export default function CompanyPerformance() {
               {/* Spacer */}
               <tr><td colSpan={computed.length + 2} style={{ height: 8, background: 'var(--surface2)', padding: 0 }} /></tr>
 
-              {/* Fillers */}
+              {/* Fillers — project rows are editable per month */}
               <PLCalcRow label="Net Profit (Fillers)" color="#0ea5e9" values={computed.map(r => r.filler)} total={totals.filler} />
               {projects.map((p, idx) => (
-                <PLCalcRow
+                <PLProjectRow
                   key={p.id}
-                  label={p.name}
+                  project={p}
                   color={PROJECT_COLORS[idx % PROJECT_COLORS.length]}
-                  indent
-                  values={rows.map((_, i) => projAmt(p, i))}
+                  rows={rows}
+                  valueAt={i => projAmt(p, i)}
                   total={projFY(p)}
+                  onCell={(i, v) => setProjectCell(p.id, i, v)}
                 />
               ))}
               <PLCalcRow label="Total Net Profit" color="#16a34a" values={computed.map(r => r.totalNetProfit)} total={totals.totalNetProfit} bold />
@@ -742,6 +763,20 @@ function MoneyCell({ value, onChange }) {
       onBlur={() => setFocused(false)}
       onChange={e => onChange(e.target.value)}
     />
+  );
+}
+
+function PLProjectRow({ project, color, rows, valueAt, total, onCell }) {
+  return (
+    <tr>
+      <td style={{ color, fontWeight: 600, paddingLeft: 28 }}>{project.name}</td>
+      {rows.map((_, i) => (
+        <td key={i} style={{ padding: '6px 8px' }}>
+          <MoneyCell value={valueAt(i)} onChange={v => onCell(i, v)} />
+        </td>
+      ))}
+      <td style={{ color, fontWeight: 700 }}>{fmtM(total)}</td>
+    </tr>
   );
 }
 
