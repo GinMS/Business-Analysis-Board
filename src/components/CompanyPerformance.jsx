@@ -26,6 +26,7 @@ const defaultAssumptions = {
   opexGrowth: 3,
   daPerMonth: 20000,
   interestPerMonth: 10000,
+  endYearTarget: 8000000,
 };
 
 const fmt = (n) =>
@@ -253,6 +254,7 @@ export default function CompanyPerformance() {
 
   const marginPct = totals.netRevenue !== 0 ? (totals.pat / totals.netRevenue) * 100 : 0;
   const ebitdaMargin = totals.netRevenue !== 0 ? (totals.ebitda / totals.netRevenue) * 100 : 0;
+  const gapToTarget = assumptions.endYearTarget - totals.totalNetProfit;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -267,6 +269,8 @@ export default function CompanyPerformance() {
           { label: 'PAT Margin',        value: `${marginPct.toFixed(1)}%`, color: marginPct >= 0 ? '#6c4de6' : '#dc2626' },
           { label: 'Fillers',           value: fmt(totals.filler),        color: '#0ea5e9' },
           { label: 'Total Net Profit',  value: fmt(totals.totalNetProfit), color: totals.totalNetProfit >= 0 ? '#16a34a' : '#dc2626' },
+          { label: 'End-Year Target',   value: fmt(assumptions.endYearTarget), color: '#e11d48' },
+          { label: gapToTarget > 0 ? 'Gap to Target' : 'Above Target', value: `${gapToTarget > 0 ? '' : '+'}${fmt(Math.abs(gapToTarget))}`, color: gapToTarget > 0 ? '#dc2626' : '#16a34a' },
         ].map(card => (
           <div key={card.label} className="card">
             <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 6 }}>{card.label}</div>
@@ -316,6 +320,9 @@ export default function CompanyPerformance() {
           </Field>
           <Field label="Interest Expense / month (RM)">
             <input className="input" type="number" value={assumptions.interestPerMonth} onChange={e => setAssume('interestPerMonth', e.target.value)} />
+          </Field>
+          <Field label="End-Year Target (RM)">
+            <input className="input" type="number" value={assumptions.endYearTarget} onChange={e => setAssume('endYearTarget', e.target.value)} />
           </Field>
         </div>
 
@@ -452,6 +459,15 @@ export default function CompanyPerformance() {
                 labelFormatter={() => ''}
               />
               <ReferenceLine y={0} stroke="var(--border)" strokeWidth={2} />
+              {assumptions.endYearTarget > 0 && (
+                <ReferenceLine
+                  y={assumptions.endYearTarget}
+                  stroke="#e11d48"
+                  strokeDasharray="6 4"
+                  strokeWidth={1.5}
+                  label={{ value: `Target ${fmt(assumptions.endYearTarget)}`, position: 'insideTopLeft', fill: '#e11d48', fontSize: 11, fontWeight: 600 }}
+                />
+              )}
               <Bar dataKey="invisible" stackId="wf" fill="transparent" legendType="none" />
               <Bar dataKey="value" stackId="wf" radius={[0, 0, 0, 0]} legendType="none" isAnimationActive={false}>
                 {waterfallData.map((entry, i) => (
