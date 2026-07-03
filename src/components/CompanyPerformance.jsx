@@ -198,43 +198,107 @@ export default function CompanyPerformance() {
     totalNetProfit: 'Total Net Profit', pat: 'PAT', netRevenue: 'Net Revenue', ebitda: 'EBITDA',
   }[waterfallMetric];
 
-  // ── Excel import ───────────────────────────────────────────────────────────
+  // ── Excel import (auto-detects layout: metrics-as-rows or metrics-as-columns)
   const handleImport = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const wb = XLSX.read(evt.target.result, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: 0 });
-      if (!raw.length) return;
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false });
+        if (!aoa.length) return;
 
-      const colMap = {
-        netRevenue:      ['Net Revenue','net_revenue','NetRevenue','net revenue'],
-        opex:            ['Opex','OPEX','opex','Operating Expense'],
-        da:              ['D&A','DA','da','Depreciation','D_A'],
-        interestExpense: ['Interest Expense','Interest','interest_expense','InterestExpense'],
-      };
-      const findCol = (row, aliases) => {
-        for (const a of aliases) if (row[a] !== undefined) return Number(row[a]) || 0;
-        return 0;
-      };
-
-      const imported = raw.map((row, i) => {
-        const labelCol = row['Month'] ?? row['month'] ?? row['Period'] ?? '';
-        const label = labelCol ? String(labelCol) : (rows[i]?.label ?? `Month ${i + 1}`);
-        return {
-          label,
-          netRevenue:      findCol(row, colMap.netRevenue),
-          opex:            findCol(row, colMap.opex),
-          da:              findCol(row, colMap.da),
-          interestExpense: findCol(row, colMap.interestExpense),
+        const METRIC_ALIASES = {
+          netRevenue:      ['net revenue', 'netrevenue', 'net rev', 'revenue'],
+          opex:            ['opex', 'operating expense', 'operating expenses', 'operating cost'],
+          interestExpense: ['interest expense', 'interest exp', 'interest exp.', 'interest'],
+          da:              ['d&a', 'da', 'depreciation', 'depreciation & amortisation', 'depreciation and amortization'],
         };
-      });
+        const norm = (s) => String(s ?? '').trim().toLowerCase();
+        const matchMetric = (s) => {
+          const n = norm(s);
+          if (!n) return null;
+          for (const [key, aliases] of Object.entries(METRIC_ALIASES)) {
+            if (aliases.some(a => n === a || n.startsWith(a))) return key;
+          }
+          return null;
+        };
+        const isMonthCell = (s) => {
+          const n = norm(s);
+          if (!n || /fy|total|forecast|metric/.test(n)) return false;
+          return /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|\d{1,2}[-/]\d{2}|'\d{2}/.test(n);
+        };
+        const toNum = (v) => {
+          if (v == null || v === '') return 0;
+          const n = Number(String(v).replace(/[^0-9.\-]/g, ''));
+          return isNaN(n) ? 0 : n;
+        };
 
-      setRows(imported);
-      setNumMonths(imported.length);
-      e.target.value = '';
+        const row0 = aoa[0] || [];
+        const col0 = aoa.map(r => (r ? r[0] : null));
+        const metricsInCol0 = col0.filter(matchMetric).length;
+        const metricsInRow0 = row0.filter(matchMetric).length;
+
+        let months = [];
+        const byMetric = {};
+
+        if (metricsInCol0 > 0 && metricsInCol0 >= metricsInRow0) {
+          // Transposed: metrics down column 0, months across row 0 (matches the dashboard layout)
+          const colIdx = [];
+          for (let c = 1; c < row0.length; c++) {
+            if (isMonthCell(row0[c])) colIdx.push(c);
+          }
+          if (!colIdx.length) {
+            for (let c = 1; c < row0.length; c++) if (!/fy|total/.test(norm(row0[c]))) colIdx.push(c);
+          }
+          months = colIdx.map(c => String(row0[c] ?? ''));
+          aoa.forEach(r => {
+            const key = matchMetric(r && r[0]);
+            if (key && !byMetric[key]) byMetric[key] = colIdx.map(c => toNum(r[c]));
+          });
+        } else {
+          // Standard: metrics across row 0, one month per subsequent row
+          const metricCol = {};
+          let monthCol = 0;
+          row0.forEach((h, c) => {
+            const key = matchMetric(h);
+            if (key && metricCol[key] === undefined) metricCol[key] = c;
+            else if (/month|period|date/.test(norm(h))) monthCol = c;
+          });
+          const dataRows = aoa.slice(1).filter(r => r && r.some(v => v != null && v !== ''));
+          months = dataRows.map((r, i) => {
+            const lbl = r[monthCol];
+            return lbl != null && String(lbl).trim() ? String(lbl) : (rows[i]?.label ?? `Month ${i + 1}`);
+          });
+          Object.entries(metricCol).forEach(([key, c]) => {
+            byMetric[key] = dataRows.map(r => toNum(r[c]));
+          });
+        }
+
+        const n = months.length;
+        if (!n || Object.keys(byMetric).length === 0) {
+          alert('Could not read any P&L figures from that file. Expected rows/columns named Net Revenue, Opex, Interest Expense and D&A. Try the Template button for the exact layout.');
+          e.target.value = '';
+          return;
+        }
+
+        const imported = Array.from({ length: n }, (_, i) => ({
+          label:           months[i] || (rows[i]?.label ?? `Month ${i + 1}`),
+          netRevenue:      byMetric.netRevenue?.[i]      ?? 0,
+          opex:            byMetric.opex?.[i]            ?? 0,
+          interestExpense: byMetric.interestExpense?.[i] ?? 0,
+          da:              byMetric.da?.[i]              ?? 0,
+        }));
+
+        setRows(imported);
+        setNumMonths(imported.length);
+      } catch (err) {
+        alert('Sorry, that file could not be read as an Excel workbook.');
+      } finally {
+        e.target.value = '';
+      }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -333,7 +397,7 @@ export default function CompanyPerformance() {
           <button className="btn-sm btn-export" onClick={downloadTemplate}>↓ Template</button>
         </div>
         <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
-          <strong>Generate</strong> compounds Month-1 values by the growth rate across all months. EBITDA = Net Revenue − Opex; PAT = EBITDA − D&A − Interest. Edit any cell below to override.
+          <strong>Generate</strong> compounds Month-1 values by the growth rate across all months. EBITDA = Net Revenue − Opex; PAT = EBITDA − D&A − Interest. Edit any cell below to override. <strong>Import</strong> reads Net Revenue, Opex, Interest Expense and D&A in either layout — metrics as rows or as columns.
         </div>
       </div>
 
