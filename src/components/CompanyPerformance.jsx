@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, Cell, LineChart, Line, Legend
+  ResponsiveContainer, ReferenceLine, Cell, LineChart, Line, Legend, LabelList
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import { exportCSV, exportExcel } from '../utils/exportData';
@@ -188,6 +188,7 @@ export default function CompanyPerformance() {
   const [waterfallMode, setWaterfallMode] = useState('monthly'); // 'monthly' | 'profit'
   const [waterfallMetric, setWaterfallMetric] = useState('totalNetProfit');
   const [importStatus, setImportStatus] = useState(null); // { ok, text }
+  const [showValues, setShowValues] = useState(true);
   const fileRef = useRef();
 
   const setAssume = (key, val) => setAssumptions(prev => ({ ...prev, [key]: Number(val) || 0 }));
@@ -375,6 +376,28 @@ export default function CompanyPerformance() {
   const marginPct = totals.netRevenue !== 0 ? (totals.pat / totals.netRevenue) * 100 : 0;
   const ebitdaMargin = totals.netRevenue !== 0 ? (totals.ebitda / totals.netRevenue) * 100 : 0;
   const gapToTarget = assumptions.endYearTarget - totals.totalNetProfit;
+
+  // Data labels for the waterfall bars (raw signed value, above the bar top)
+  const renderValueLabel = (props) => {
+    const { x, y, width, index } = props;
+    const d = waterfallData[index];
+    if (!d || d.increment > 0) return null; // total-with-increment is labelled by renderTotalLabel
+    return (
+      <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={11} fontWeight={600} fill="var(--text)">
+        {fmt(d.raw)}
+      </text>
+    );
+  };
+  const renderTotalLabel = (props) => {
+    const { x, y, width, index } = props;
+    const d = waterfallData[index];
+    if (!d || !(d.increment > 0)) return null;
+    return (
+      <text x={x + width / 2} y={y - 6} textAnchor="middle" fontSize={11} fontWeight={700} fill="var(--text)">
+        {fmt(d.raw)}
+      </text>
+    );
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -567,13 +590,17 @@ export default function CompanyPerformance() {
                 <option value="netRevenue">Net Revenue</option>
               </select>
             )}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={showValues} onChange={e => setShowValues(e.target.checked)} />
+              Show values
+            </label>
             <button className="btn-sm btn-export" onClick={() => exportWaterfall('csv')}>CSV</button>
             <button className="btn-sm btn-export" onClick={() => exportWaterfall('excel')}>Excel</button>
           </div>
         </div>
         <div style={{ padding: 24 }}>
           <ResponsiveContainer width="100%" height={360}>
-            <BarChart data={waterfallData} margin={{ top: 10, right: 20, left: 20, bottom: 10 }}>
+            <BarChart data={waterfallData} margin={{ top: 24, right: 20, left: 20, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
               <XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} interval={0} angle={waterfallData.length > 8 ? -35 : 0} textAnchor={waterfallData.length > 8 ? 'end' : 'middle'} height={waterfallData.length > 8 ? 60 : 30} />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} tickFormatter={v => fmt(v)} />
@@ -611,9 +638,12 @@ export default function CompanyPerformance() {
                     fillOpacity={entry.type === 'total' ? 0.9 : 1}
                   />
                 ))}
+                {showValues && <LabelList dataKey="value" content={renderValueLabel} />}
               </Bar>
               {/* Filler increment stacked on top of the Total Net Profit bar */}
-              <Bar dataKey="increment" stackId="wf" radius={[4, 4, 0, 0]} fill="#f59e0b" legendType="none" isAnimationActive={false} />
+              <Bar dataKey="increment" stackId="wf" radius={[4, 4, 0, 0]} fill="#f59e0b" legendType="none" isAnimationActive={false}>
+                {showValues && <LabelList dataKey="increment" content={renderTotalLabel} />}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
           <div style={{ display: 'flex', gap: 20, justifyContent: 'center', marginTop: 8, flexWrap: 'wrap' }}>
