@@ -64,13 +64,24 @@ const matchMetric = (s) => {
   for (const [k, al] of Object.entries(METRIC_ALIASES)) if (al.some(a => a.length >= 4 && n.includes(a))) return k;
   return null;
 };
-const isMonthCell = (s) => {
-  const n = norm(s);
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const isMonthCell = (v) => {
+  if (v instanceof Date) return true;
+  if (typeof v === 'number') return Number.isInteger(v) && v >= 1900 && v <= 2100; // a year header
+  const n = norm(v);
   if (!n || /\b(fy|total|forecast|metric|budget|actual|variance)\b/.test(n)) return false;
+  if (/^\d{5,}$/.test(n.replace(/[,.]/g, ''))) return false; // long number = a value, not a month
   return /jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{4}|\d{1,2}[-/.]\d{1,4}|'\d{2}/.test(n);
 };
+const monthLabel = (v) => {
+  if (v instanceof Date) return `${MONTH_ABBR[v.getMonth()]} ${v.getFullYear()}`;
+  return String(v ?? '');
+};
+// Read the raw cell value; numbers pass straight through (no locale/format parsing).
 const toNum = (v) => {
   if (v == null || v === '') return 0;
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  if (v instanceof Date) return 0;
   let s = String(v).trim();
   const neg = /^\(.*\)$/.test(s); // accounting negatives (1,234)
   s = s.replace(/[()]/g, '').replace(/[^0-9.\-]/g, '');
@@ -97,7 +108,7 @@ function detectTransposed(aoa) {
   if (!colIdx.length) {
     for (let c = 0; c < hdr.length; c++) if (c !== labelCol && hdr[c] != null && !/fy|total/.test(norm(hdr[c]))) colIdx.push(c);
   }
-  const months = colIdx.map(c => String(hdr[c] ?? ''));
+  const months = colIdx.map(c => monthLabel(hdr[c]));
   const byMetric = {}; const matched = [];
   aoa.forEach((r, ri) => {
     if (ri === headerRow) return;
@@ -126,7 +137,7 @@ function detectStandard(aoa) {
   const dataRows = aoa.slice(headerRow + 1).filter(r => r && r.some(v => v != null && v !== ''));
   const months = dataRows.map((r, i) => {
     const l = r[monthCol];
-    return (l != null && String(l).trim()) ? String(l) : `Month ${i + 1}`;
+    return (l != null && String(l).trim()) ? monthLabel(l) : `Month ${i + 1}`;
   });
   const byMetric = {};
   Object.entries(metricCol).forEach(([key, c]) => { byMetric[key] = dataRows.map(r => toNum(r[c])); });
@@ -139,7 +150,7 @@ function parseWorkbook(wb) {
   for (const name of wb.SheetNames) {
     const ws = wb.Sheets[name];
     if (!ws) continue;
-    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false, raw: false });
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: false, raw: true });
     if (!aoa.length) continue;
     for (const cand of [detectTransposed(aoa), detectStandard(aoa)]) {
       if (!cand || !cand.months.length || !cand.matchedKeys.length) continue;
@@ -310,7 +321,7 @@ export default function CompanyPerformance() {
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
         const best = parseWorkbook(wb);
 
         if (!best) {
