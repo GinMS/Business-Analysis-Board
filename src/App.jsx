@@ -4,6 +4,8 @@ import LoanForecast from './components/LoanForecast';
 import UnitCalculation from './components/UnitCalculation';
 import RevenueShare from './components/RevenueShare';
 import CompanyPerformance from './components/CompanyPerformance';
+import Login from './components/Login';
+import { useAuth } from './utils/useAuth';
 import './App.css';
 
 const TABS = [
@@ -17,6 +19,19 @@ const TABS = [
 export default function App() {
   const [activeTab, setActiveTab] = useState('company');
   const active = TABS.find(t => t.id === activeTab);
+  const { user, loading, error, login, logout, firebaseReady } = useAuth();
+
+  // Auth gate: when Firebase is configured, require a Google sign-in first.
+  if (firebaseReady && loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>
+        Loading…
+      </div>
+    );
+  }
+  if (firebaseReady && !user) {
+    return <Login onLogin={login} error={error} firebaseReady={firebaseReady} />;
+  }
 
   const resetAllData = () => {
     if (!window.confirm('Erase all saved data and reset every tab to its defaults? This cannot be undone.')) return;
@@ -60,6 +75,20 @@ export default function App() {
         </nav>
 
         <div className="sidebar-footer">
+          {firebaseReady && user && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              {user.photoURL
+                ? <img src={user.photoURL} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} referrerPolicy="no-referrer" />
+                : <div className="logo-mark" style={{ width: 28, height: 28, fontSize: 12 }}>{(user.displayName || user.email || '?').slice(0, 1).toUpperCase()}</div>}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.displayName || 'Signed in'}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
+              </div>
+              <button onClick={logout} title="Sign out" style={{ fontSize: 11, color: 'var(--muted)', background: 'transparent', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', cursor: 'pointer' }}>
+                Sign out
+              </button>
+            </div>
+          )}
           <button
             onClick={resetAllData}
             title="Erase all saved data on every tab and reset to defaults"
