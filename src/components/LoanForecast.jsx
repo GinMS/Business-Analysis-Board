@@ -5,8 +5,11 @@ import {
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
 import { useLocalStorage } from '../utils/useLocalStorage';
+import Section from './Section';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+const PROJECT_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#e11d48', '#8b5cf6', '#14b8a6'];
 
 const defaultInputs = {
   startMonth: 0,
@@ -28,7 +31,7 @@ const defaultInputs = {
 const fmt = (n, dec = 0) =>
   Math.abs(n) >= 1e6 ? `$${(n / 1e6).toFixed(dec + 1)}M`
   : Math.abs(n) >= 1e3 ? `$${(n / 1e3).toFixed(dec)}K`
-  : `$${n.toFixed(dec)}`;
+  : `$${(n || 0).toFixed(dec)}`;
 
 const fmtNum = (n) =>
   Math.abs(n) >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`;
@@ -38,6 +41,9 @@ const fmtPct = (n) => `${n.toFixed(1)}%`;
 export default function LoanForecast() {
   const [inputs, setInputs] = useLocalStorage('ba-loan-inputs', defaultInputs);
   const [activeTab, setActiveTab] = useState('portfolio');
+  // Loan Breakdown: editable per-month base values + projects that feed the totals
+  const [loanBase, setLoanBase] = useLocalStorage('ba-loan-breakdown-base', []);
+  const [loanProjects, setLoanProjects] = useLocalStorage('ba-loan-projects', []);
 
   const set = (key, val) => setInputs(prev => ({ ...prev, [key]: Number(val) }));
 
@@ -77,22 +83,9 @@ export default function LoanForecast() {
       const roe = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
 
       rows.push({
-        label,
-        disbursements,
-        newDisbursedAmount,
-        portfolioBalance,
-        interestIncome,
-        originationFees,
-        grossRevenue,
-        netRevenue,
-        nplProvision,
-        netCreditLoss,
-        costOfFunds,
-        operatingCost,
-        totalCost,
-        profit,
-        nim,
-        roe,
+        label, disbursements, newDisbursedAmount, portfolioBalance, interestIncome,
+        originationFees, grossRevenue, netRevenue, nplProvision, netCreditLoss,
+        costOfFunds, operatingCost, totalCost, profit, nim, roe,
       });
     }
     return rows;
@@ -103,9 +96,59 @@ export default function LoanForecast() {
     profit: data.reduce((s, r) => s + r.profit, 0),
     disbursed: data.reduce((s, r) => s + r.newDisbursedAmount, 0),
     nplTotal: data.reduce((s, r) => s + r.netCreditLoss, 0),
-    peakPortfolio: Math.max(...data.map(r => r.portfolioBalance)),
+    peakPortfolio: data.length ? Math.max(...data.map(r => r.portfolioBalance)) : 0,
     avgNim: data.length ? data.reduce((s, r) => s + r.nim, 0) / data.length : 0,
   }), [data]);
+
+  // ── Loan Breakdown ─────────────────────────────────────────────────────────
+  const bkLabels = useMemo(() => Array.from({ length: inputs.months }, (_, i) => {
+    const m = (inputs.startMonth + i) % 12;
+    const y = inputs.startYear + Math.floor((inputs.startMonth + i) / 12);
+    return `${MONTHS[m]} ${y}`;
+  }), [inputs.months, inputs.startMonth, inputs.startYear]);
+
+  const baseAt = (i, key) => (loanBase[i] ? Number(loanBase[i][key]) || 0 : 0);
+  const setBaseCell = (i, key, val) => {
+    setLoanBase(prev => {
+      const next = Array.from({ length: inputs.months }, (_, j) => prev[j] || { loanBook: 0, interestIncome: 0 });
+      next[i] = { ...next[i], [key]: Number(val) || 0 };
+      return next;
+    });
+  };
+  const projAt = (p, i, key) => (i >= p.startIdx ? Number(p[key]) || 0 : 0);
+  const projFY = (p, key) => Number(p[key] || 0) * Math.max(0, inputs.months - p.startIdx);
+
+  const breakdown = useMemo(() => bkLabels.map((label, i) => {
+    const loanBookProjects = loanProjects.reduce((s, p) => s + projAt(p, i, 'loanBook'), 0);
+    const interestProjects = loanProjects.reduce((s, p) => s + projAt(p, i, 'interestIncome'), 0);
+    const loanBook = baseAt(i, 'loanBook') + loanBookProjects;
+    const interestIncome = baseAt(i, 'interestIncome') + interestProjects;
+    return { label, loanBook, interestIncome };
+  }), [bkLabels, loanBase, loanProjects, inputs.months]);
+
+  const bkTotals = useMemo(() => ({
+    loanBook: breakdown.reduce((s, r) => s + r.loanBook, 0),
+    interestIncome: breakdown.reduce((s, r) => s + r.interestIncome, 0),
+  }), [breakdown]);
+
+  // Loan projects CRUD
+  const addLoanProject = () => {
+    const id = (loanProjects.reduce((m, p) => Math.max(m, p.id), 0) || 0) + 1;
+    setLoanProjects(prev => [...prev, { id, name: `Project ${prev.length + 1}`, loanBook: 0, interestIncome: 0, startIdx: 0 }]);
+  };
+  const updateLoanProject = (id, key, val) =>
+    setLoanProjects(prev => prev.map(p => p.id === id ? { ...p, [key]: key === 'name' ? val : Number(val) || 0 } : p));
+  const removeLoanProject = (id) => setLoanProjects(prev => prev.filter(p => p.id !== id));
+
+  const exportBreakdown = (type) => {
+    const headers = ['Metric', ...breakdown.map(r => r.label), 'Total'];
+    const rows = [
+      ['Loan Book', ...breakdown.map(r => r.loanBook), bkTotals.loanBook],
+      ['Interest Income', ...breakdown.map(r => r.interestIncome), bkTotals.interestIncome],
+    ];
+    if (type === 'csv') exportCSV('loan-breakdown', headers, rows);
+    else exportExcel('loan-breakdown', headers, rows);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -127,8 +170,7 @@ export default function LoanForecast() {
       </div>
 
       {/* Inputs */}
-      <div className="card">
-        <div className="section-title">Model Inputs</div>
+      <Section title="Model Inputs">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <InputField label="Forecast Months" value={inputs.months} onChange={v => set('months', v)} min={1} max={60} />
           <InputField label="Initial Monthly Disbursements (#)" value={inputs.initialDisbursements} onChange={v => set('initialDisbursements', v)} />
@@ -143,10 +185,10 @@ export default function LoanForecast() {
           <InputField label="Base Operating Cost ($)" value={inputs.operatingCostBase} onChange={v => set('operatingCostBase', v)} />
           <InputField label="Cost per Loan Disbursed ($)" value={inputs.operatingCostPerLoan} onChange={v => set('operatingCostPerLoan', v)} step={1} />
         </div>
-      </div>
+      </Section>
 
       {/* Charts */}
-      <div className="card" style={{ padding: 0 }}>
+      <Section title="Charts" flush>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
           {[
             { key: 'portfolio', label: 'Loan Book' },
@@ -154,11 +196,7 @@ export default function LoanForecast() {
             { key: 'credit', label: 'Credit Risk' },
             { key: 'nim', label: 'NIM & ROE' },
           ].map(tab => (
-            <button
-              key={tab.key}
-              className={`tab-btn${activeTab === tab.key ? ' active' : ''}`}
-              onClick={() => setActiveTab(tab.key)}
-            >
+            <button key={tab.key} className={`tab-btn${activeTab === tab.key ? ' active' : ''}`} onClick={() => setActiveTab(tab.key)}>
               {tab.label}
             </button>
           ))}
@@ -227,13 +265,14 @@ export default function LoanForecast() {
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </Section>
 
       {/* Monthly Table */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
-          <div style={{ display: 'flex', gap: 8 }}>
+      <Section
+        title="Monthly Breakdown"
+        flush
+        right={(
+          <>
             <button className="btn-sm btn-export" onClick={() => {
               const headers = ['Metric', ...data.map(r => r.label)];
               const rows = [
@@ -266,8 +305,9 @@ export default function LoanForecast() {
               ];
               exportExcel('loan-forecast', headers, rows);
             }}>Excel</button>
-          </div>
-        </div>
+          </>
+        )}
+      >
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -277,50 +317,152 @@ export default function LoanForecast() {
               </tr>
             </thead>
             <tbody>
+              <LoanTextRow label="Disbursed #" data={data} fn={r => fmtNum(r.disbursements)} />
+              <LoanTextRow label="Disbursed $" data={data} fn={r => fmt(r.newDisbursedAmount)} />
+              <LoanTextRow label="Loan Book" data={data} color="var(--accent)" fn={r => fmt(r.portfolioBalance)} />
+              <LoanTextRow label="Interest Income" data={data} fn={r => fmt(r.interestIncome)} />
+              <LoanTextRow label="Orig. Fees" data={data} fn={r => fmt(r.originationFees)} />
+              <LoanTextRow label="Revenue" data={data} color="var(--accent)" fn={r => fmt(r.grossRevenue)} />
+              <LoanTextRow label="Credit Loss" data={data} color="var(--red)" fn={r => fmt(r.netCreditLoss)} />
+              <LoanTextRow label="Op. Cost" data={data} fn={r => fmt(r.operatingCost)} />
+              <LoanTextRow label="Profit" data={data} fn={r => fmt(r.profit)} colorFn={r => r.profit >= 0 ? 'var(--green)' : 'var(--red)'} />
+              <LoanTextRow label="NIM" data={data} color="var(--green)" fn={r => fmtPct(r.nim)} />
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* Loan Breakdown (editable) */}
+      <Section
+        title="Loan Breakdown"
+        flush
+        right={(
+          <>
+            <button className="btn-sm btn-export" onClick={() => exportBreakdown('csv')}>CSV</button>
+            <button className="btn-sm btn-export" onClick={() => exportBreakdown('excel')}>Excel</button>
+          </>
+        )}
+      >
+        <div style={{ padding: '10px 24px 0', fontSize: 11, color: 'var(--muted)' }}>
+          Edit Loan Book and Interest Income per month. Totals include any projects added below.
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
               <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Disbursed #</td>
-                {data.map((row, i) => <td key={i}>{fmtNum(row.disbursements)}</td>)}
+                <th style={{ textAlign: 'left', minWidth: 160 }}>Metric</th>
+                {bkLabels.map((l, i) => <th key={i} style={{ minWidth: 110 }}>{l}</th>)}
+                <th style={{ color: 'var(--accent)', fontWeight: 700 }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style={{ color: 'var(--accent)', fontWeight: 600 }}>Loan Book (input)</td>
+                {bkLabels.map((_, i) => (
+                  <td key={i} style={{ padding: '6px 8px' }}>
+                    <input className="cell-input" type="number" value={baseAt(i, 'loanBook') || ''} placeholder="0"
+                      onChange={e => setBaseCell(i, 'loanBook', e.target.value)} />
+                  </td>
+                ))}
+                <td style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(breakdown.reduce((s, r, i) => s + baseAt(i, 'loanBook'), 0))}</td>
               </tr>
               <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Disbursed $</td>
-                {data.map((row, i) => <td key={i}>{fmt(row.newDisbursedAmount)}</td>)}
+                <td style={{ color: 'var(--accent2)', fontWeight: 600 }}>Interest Income (input)</td>
+                {bkLabels.map((_, i) => (
+                  <td key={i} style={{ padding: '6px 8px' }}>
+                    <input className="cell-input" type="number" value={baseAt(i, 'interestIncome') || ''} placeholder="0"
+                      onChange={e => setBaseCell(i, 'interestIncome', e.target.value)} />
+                  </td>
+                ))}
+                <td style={{ color: 'var(--accent2)', fontWeight: 700 }}>{fmt(breakdown.reduce((s, r, i) => s + baseAt(i, 'interestIncome'), 0))}</td>
+              </tr>
+              {loanProjects.map((p, idx) => (
+                <tr key={`lb-${p.id}`}>
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], paddingLeft: 28 }}>{p.name} · Loan Book</td>
+                  {bkLabels.map((_, i) => <td key={i}>{fmt(projAt(p, i, 'loanBook'))}</td>)}
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], fontWeight: 700 }}>{fmt(projFY(p, 'loanBook'))}</td>
+                </tr>
+              ))}
+              {loanProjects.map((p, idx) => (
+                <tr key={`ii-${p.id}`}>
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], paddingLeft: 28 }}>{p.name} · Interest Income</td>
+                  {bkLabels.map((_, i) => <td key={i}>{fmt(projAt(p, i, 'interestIncome'))}</td>)}
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], fontWeight: 700 }}>{fmt(projFY(p, 'interestIncome'))}</td>
+                </tr>
+              ))}
+              <tr><td colSpan={bkLabels.length + 2} style={{ height: 8, background: 'var(--surface2)', padding: 0 }} /></tr>
+              <tr>
+                <td style={{ color: 'var(--accent)', fontWeight: 700 }}>Loan Book — Total</td>
+                {breakdown.map((r, i) => <td key={i} style={{ color: 'var(--accent)', fontWeight: 600 }}>{fmt(r.loanBook)}</td>)}
+                <td style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(bkTotals.loanBook)}</td>
               </tr>
               <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Loan Book</td>
-                {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.portfolioBalance)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Interest Income</td>
-                {data.map((row, i) => <td key={i}>{fmt(row.interestIncome)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Orig. Fees</td>
-                {data.map((row, i) => <td key={i}>{fmt(row.originationFees)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Revenue</td>
-                {data.map((row, i) => <td key={i} style={{ color: 'var(--accent)' }}>{fmt(row.grossRevenue)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Credit Loss</td>
-                {data.map((row, i) => <td key={i} style={{ color: 'var(--red)' }}>{fmt(row.netCreditLoss)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Op. Cost</td>
-                {data.map((row, i) => <td key={i}>{fmt(row.operatingCost)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>Profit</td>
-                {data.map((row, i) => <td key={i} style={{ color: row.profit >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmt(row.profit)}</td>)}
-              </tr>
-              <tr>
-                <td style={{ color: 'var(--text)', fontWeight: 500 }}>NIM</td>
-                {data.map((row, i) => <td key={i} style={{ color: 'var(--green)' }}>{fmtPct(row.nim)}</td>)}
+                <td style={{ color: 'var(--accent2)', fontWeight: 700 }}>Interest Income — Total</td>
+                {breakdown.map((r, i) => <td key={i} style={{ color: 'var(--accent2)', fontWeight: 600 }}>{fmt(r.interestIncome)}</td>)}
+                <td style={{ color: 'var(--accent2)', fontWeight: 700 }}>{fmt(bkTotals.interestIncome)}</td>
               </tr>
             </tbody>
           </table>
         </div>
-      </div>
+      </Section>
+
+      {/* Loan Projects */}
+      <Section
+        title="Loan Breakdown Projects"
+        right={<button className="btn-sm btn-primary" onClick={addLoanProject}>+ Add Project</button>}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {loanProjects.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              No projects yet. Add one to layer extra Loan Book and Interest Income into the breakdown above.
+            </div>
+          )}
+          {loanProjects.map((p, idx) => (
+            <div key={p.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: PROJECT_COLORS[idx % PROJECT_COLORS.length], marginBottom: 8 }} />
+              <FieldBox label="Project Name">
+                <input className="input" style={{ width: 150 }} value={p.name} onChange={e => updateLoanProject(p.id, 'name', e.target.value)} />
+              </FieldBox>
+              <FieldBox label="Loan Book / mo ($)">
+                <input className="input" type="number" style={{ width: 130 }} value={p.loanBook} onChange={e => updateLoanProject(p.id, 'loanBook', e.target.value)} />
+              </FieldBox>
+              <FieldBox label="Interest Income / mo ($)">
+                <input className="input" type="number" style={{ width: 150 }} value={p.interestIncome} onChange={e => updateLoanProject(p.id, 'interestIncome', e.target.value)} />
+              </FieldBox>
+              <FieldBox label="Starts">
+                <select className="input" style={{ width: 130 }} value={p.startIdx} onChange={e => updateLoanProject(p.id, 'startIdx', e.target.value)}>
+                  {bkLabels.map((l, i) => <option key={i} value={i}>{l}</option>)}
+                </select>
+              </FieldBox>
+              <FieldBox label="FY Loan Book">
+                <div style={{ fontSize: 13, fontWeight: 700, color: PROJECT_COLORS[idx % PROJECT_COLORS.length], padding: '8px 0' }}>{fmt(projFY(p, 'loanBook'))}</div>
+              </FieldBox>
+              <FieldBox label="FY Interest">
+                <div style={{ fontSize: 13, fontWeight: 700, color: PROJECT_COLORS[idx % PROJECT_COLORS.length], padding: '8px 0' }}>{fmt(projFY(p, 'interestIncome'))}</div>
+              </FieldBox>
+              <button className="btn-sm btn-export" style={{ marginBottom: 2 }} onClick={() => removeLoanProject(p.id)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function LoanTextRow({ label, data, fn, color, colorFn }) {
+  return (
+    <tr>
+      <td style={{ color: 'var(--text)', fontWeight: 500 }}>{label}</td>
+      {data.map((row, i) => <td key={i} style={{ color: colorFn ? colorFn(row) : (color || undefined) }}>{fn(row)}</td>)}
+    </tr>
+  );
+}
+
+function FieldBox({ label, children }) {
+  return (
+    <div>
+      <label style={{ display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{label}</label>
+      {children}
     </div>
   );
 }

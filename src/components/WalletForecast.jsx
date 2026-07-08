@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
 import { useLocalStorage } from '../utils/useLocalStorage';
+import Section from './Section';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -112,8 +113,7 @@ export default function WalletForecast() {
       </div>
 
       {/* Inputs Panel */}
-      <div className="card">
-        <div className="section-title">Model Inputs</div>
+      <Section title="Model Inputs">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <InputField label="Forecast Months" value={inputs.months} onChange={v => set('months', v)} min={1} max={60} />
           <InputField label="Initial Users" value={inputs.initialUsers} onChange={v => set('initialUsers', v)} />
@@ -126,10 +126,10 @@ export default function WalletForecast() {
           <InputField label="Base Operating Cost ($)" value={inputs.operatingCostBase} onChange={v => set('operatingCostBase', v)} />
           <InputField label="Operating Cost / User ($)" value={inputs.operatingCostPerUser} onChange={v => set('operatingCostPerUser', v)} step={0.1} />
         </div>
-      </div>
+      </Section>
 
       {/* Chart Tabs */}
-      <div className="card" style={{ padding: 0 }}>
+      <Section title="Charts" flush>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
           {[
             { key: 'overview', label: 'Revenue & Profit' },
@@ -203,43 +203,41 @@ export default function WalletForecast() {
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </Section>
 
       {/* Monthly Table */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-sm btn-export" onClick={() => {
-              const headers = ['Metric', ...data.map(r => r.label)];
-              const rows = [
-                ['Users', ...data.map(r => r.users)],
-                ['New Users', ...data.map(r => r.newUsers)],
-                ['GMV', ...data.map(r => r.gmv.toFixed(2))],
-                ['Revenue', ...data.map(r => r.revenue.toFixed(2))],
-                ['Acq. Cost', ...data.map(r => r.acquisitionCost.toFixed(2))],
-                ['Op. Cost', ...data.map(r => r.operatingCost.toFixed(2))],
-                ['Profit', ...data.map(r => r.profit.toFixed(2))],
-                ['Margin (%)', ...data.map(r => r.margin.toFixed(1))],
-              ];
-              exportCSV('wallet-forecast', headers, rows);
-            }}>CSV</button>
-            <button className="btn-sm btn-export" onClick={() => {
-              const headers = ['Metric', ...data.map(r => r.label)];
-              const rows = [
-                ['Users', ...data.map(r => r.users)],
-                ['New Users', ...data.map(r => r.newUsers)],
-                ['GMV', ...data.map(r => r.gmv)],
-                ['Revenue', ...data.map(r => r.revenue)],
-                ['Acq. Cost', ...data.map(r => r.acquisitionCost)],
-                ['Op. Cost', ...data.map(r => r.operatingCost)],
-                ['Profit', ...data.map(r => r.profit)],
-                ['Margin (%)', ...data.map(r => r.margin)],
-              ];
-              exportExcel('wallet-forecast', headers, rows);
-            }}>Excel</button>
-          </div>
-        </div>
+      <Section title="Monthly Breakdown" flush right={(
+        <>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...data.map(r => r.label)];
+            const rows = [
+              ['Users', ...data.map(r => r.users)],
+              ['New Users', ...data.map(r => r.newUsers)],
+              ['GMV', ...data.map(r => r.gmv.toFixed(2))],
+              ['Revenue', ...data.map(r => r.revenue.toFixed(2))],
+              ['Acq. Cost', ...data.map(r => r.acquisitionCost.toFixed(2))],
+              ['Op. Cost', ...data.map(r => r.operatingCost.toFixed(2))],
+              ['Profit', ...data.map(r => r.profit.toFixed(2))],
+              ['Margin (%)', ...data.map(r => r.margin.toFixed(1))],
+            ];
+            exportCSV('wallet-forecast', headers, rows);
+          }}>CSV</button>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...data.map(r => r.label)];
+            const rows = [
+              ['Users', ...data.map(r => r.users)],
+              ['New Users', ...data.map(r => r.newUsers)],
+              ['GMV', ...data.map(r => r.gmv)],
+              ['Revenue', ...data.map(r => r.revenue)],
+              ['Acq. Cost', ...data.map(r => r.acquisitionCost)],
+              ['Op. Cost', ...data.map(r => r.operatingCost)],
+              ['Profit', ...data.map(r => r.profit)],
+              ['Margin (%)', ...data.map(r => r.margin)],
+            ];
+            exportExcel('wallet-forecast', headers, rows);
+          }}>Excel</button>
+        </>
+      )}>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -284,7 +282,7 @@ export default function WalletForecast() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Section>
     </div>
   );
 }

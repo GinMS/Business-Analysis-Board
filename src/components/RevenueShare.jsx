@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
 import { useLocalStorage } from '../utils/useLocalStorage';
+import Section from './Section';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -106,8 +107,7 @@ export default function RevenueShare() {
       </div>
 
       {/* Inputs */}
-      <div className="card">
-        <div className="section-title">Model Inputs</div>
+      <Section title="Model Inputs">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
           <InputField label="Forecast Months" value={inputs.months} onChange={v => set('months', v)} min={1} max={60} />
           <InputField label="Initial Users" value={inputs.initialUsers} onChange={v => set('initialUsers', v)} />
@@ -133,10 +133,10 @@ export default function RevenueShare() {
             />
           </div>
         </div>
-      </div>
+      </Section>
 
       {/* Charts */}
-      <div className="card" style={{ padding: 0 }}>
+      <Section title="Charts" flush>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
           {[
             { key: 'split', label: 'Revenue Split' },
@@ -197,39 +197,37 @@ export default function RevenueShare() {
             </ResponsiveContainer>
           )}
         </div>
-      </div>
+      </Section>
 
       {/* Monthly Breakdown Table — transposed */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>Monthly Breakdown</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-sm btn-export" onClick={() => {
-              const headers = ['Metric', ...data.map(r => r.label)];
-              const rows = [
-                ['Users', ...data.map(r => r.users)],
-                ['Revenue (RM)', ...data.map(r => r.revenue.toFixed(2))],
-                ['GTV', ...data.map(r => r.gtv.toFixed(2))],
-                ['Nett Revenue', ...data.map(r => r.nettRevenue.toFixed(2))],
-                [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare.toFixed(2))],
-                [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare.toFixed(2))],
-              ];
-              exportCSV('revenue-share', headers, rows);
-            }}>CSV</button>
-            <button className="btn-sm btn-export" onClick={() => {
-              const headers = ['Metric', ...data.map(r => r.label)];
-              const rows = [
-                ['Users', ...data.map(r => r.users)],
-                ['Revenue (RM)', ...data.map(r => r.revenue)],
-                ['GTV', ...data.map(r => r.gtv)],
-                ['Nett Revenue', ...data.map(r => r.nettRevenue)],
-                [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare)],
-                [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare)],
-              ];
-              exportExcel('revenue-share', headers, rows);
-            }}>Excel</button>
-          </div>
-        </div>
+      <Section title="Monthly Breakdown" flush right={(
+        <>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...data.map(r => r.label)];
+            const rows = [
+              ['Users', ...data.map(r => r.users)],
+              ['Revenue (RM)', ...data.map(r => r.revenue.toFixed(2))],
+              ['GTV', ...data.map(r => r.gtv.toFixed(2))],
+              ['Nett Revenue', ...data.map(r => r.nettRevenue.toFixed(2))],
+              [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare.toFixed(2))],
+              [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare.toFixed(2))],
+            ];
+            exportCSV('revenue-share', headers, rows);
+          }}>CSV</button>
+          <button className="btn-sm btn-export" onClick={() => {
+            const headers = ['Metric', ...data.map(r => r.label)];
+            const rows = [
+              ['Users', ...data.map(r => r.users)],
+              ['Revenue (RM)', ...data.map(r => r.revenue)],
+              ['GTV', ...data.map(r => r.gtv)],
+              ['Nett Revenue', ...data.map(r => r.nettRevenue)],
+              [`My Share (${mySharePct}%)`, ...data.map(r => r.myShare)],
+              [`Partner Share (${inputs.partnerSharePct}%)`, ...data.map(r => r.partnerShare)],
+            ];
+            exportExcel('revenue-share', headers, rows);
+          }}>Excel</button>
+        </>
+      )}>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -266,7 +264,7 @@ export default function RevenueShare() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Section>
     </div>
   );
 }

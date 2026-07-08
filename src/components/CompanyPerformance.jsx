@@ -6,6 +6,7 @@ import {
 import * as XLSX from 'xlsx';
 import { exportCSV, exportExcel } from '../utils/exportData';
 import { useLocalStorage } from '../utils/useLocalStorage';
+import Section from './Section';
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
@@ -16,6 +17,9 @@ const INPUT_ROWS = [
   { key: 'interestExpense', label: 'Interest Expense', color: '#8b5cf6' },
   { key: 'da',              label: 'D&A',              color: '#d97706' },
 ];
+
+// Tracked separately from the P&L build (not part of EBITDA/PAT); imported + templated.
+const BP_ROW = { key: 'bpVariance', label: 'BP Variance', color: '#0891b2' };
 
 const PROJECT_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#e11d48', '#8b5cf6', '#14b8a6'];
 
@@ -51,8 +55,9 @@ const METRIC_ALIASES = {
   opex:            ['opex', 'operating expense', 'operating expenses', 'operating cost', 'operating costs', 'total opex'],
   interestExpense: ['interest expense', 'interest exp', 'finance cost', 'finance costs', 'interest'],
   da:              ['d&a', 'd & a', 'da', 'depreciation', 'depreciation & amortisation', 'depreciation and amortization', 'amortisation', 'amortization'],
+  bpVariance:      ['bp variance', 'bpvariance', 'bp var', 'budget variance', 'business plan variance', 'variance'],
 };
-const METRIC_LABELS = { netRevenue: 'Net Revenue', opex: 'Opex', interestExpense: 'Interest Expense', da: 'D&A' };
+const METRIC_LABELS = { netRevenue: 'Net Revenue', opex: 'Opex', interestExpense: 'Interest Expense', da: 'D&A', bpVariance: 'BP Variance' };
 
 const norm = (s) => String(s ?? '').trim().toLowerCase();
 const matchMetric = (s) => {
@@ -170,6 +175,7 @@ function makeEmptyRows(months, startMonth, startYear) {
       opex: 0,
       da: 0,
       interestExpense: 0,
+      bpVariance: 0,
     };
   });
 }
@@ -198,7 +204,7 @@ export default function CompanyPerformance() {
     const newRows = makeEmptyRows(nm, sm, sy);
     newRows.forEach((nr) => {
       const existing = rows.find(r => r.label === nr.label);
-      if (existing) Object.assign(nr, { netRevenue: existing.netRevenue, opex: existing.opex, da: existing.da, interestExpense: existing.interestExpense });
+      if (existing) Object.assign(nr, { netRevenue: existing.netRevenue, opex: existing.opex, da: existing.da, interestExpense: existing.interestExpense, bpVariance: existing.bpVariance });
     });
     setRows(newRows);
   };
@@ -261,6 +267,7 @@ export default function CompanyPerformance() {
     return {
       netRevenue: sum('netRevenue'), opex: sum('opex'), ebitda: sum('ebitda'),
       da: sum('da'), interestExpense: sum('interestExpense'), pat: sum('pat'),
+      bpVariance: sum('bpVariance'),
       filler: sum('filler'), totalNetProfit: sum('totalNetProfit'),
     };
   }, [computed]);
@@ -377,6 +384,7 @@ export default function CompanyPerformance() {
           opex:            best.byMetric.opex?.[i]            ?? 0,
           interestExpense: best.byMetric.interestExpense?.[i] ?? 0,
           da:              best.byMetric.da?.[i]              ?? 0,
+          bpVariance:      best.byMetric.bpVariance?.[i]      ?? 0,
         }));
         setRows(imported);
         setNumMonths(n);
@@ -398,8 +406,8 @@ export default function CompanyPerformance() {
   };
 
   const downloadTemplate = () => {
-    const headers = ['Month', 'Net Revenue', 'Opex', 'Interest Expense', 'D&A'];
-    const templateRows = makeEmptyRows(numMonths, startMonth, startYear).map(r => [r.label, 0, 0, 0, 0]);
+    const headers = ['Month', 'Net Revenue', 'Opex', 'Interest Expense', 'D&A', 'BP Variance'];
+    const templateRows = makeEmptyRows(numMonths, startMonth, startYear).map(r => [r.label, 0, 0, 0, 0, 0]);
     exportExcel('pl-template', headers, templateRows);
   };
 
@@ -460,8 +468,7 @@ export default function CompanyPerformance() {
       </div>
 
       {/* Forecast Assumptions + Generate */}
-      <div className="card">
-        <div className="section-title">Forecast Assumptions</div>
+      <Section title="Forecast Assumptions">
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-end' }}>
           <Field label="Start Month">
             <select className="input" style={{ width: 120 }} value={startMonth} onChange={e => {
@@ -513,7 +520,7 @@ export default function CompanyPerformance() {
           <button className="btn-sm btn-export" onClick={downloadTemplate}>↓ Template</button>
         </div>
         <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
-          <strong>Generate</strong> compounds Month-1 values by the growth rate across all months. EBITDA = Net Revenue − Opex; PAT = EBITDA − D&A − Interest. Edit any cell below to override. <strong>Import</strong> reads Net Revenue, Opex, Interest Expense and D&A in either layout — metrics as rows or as columns.
+          <strong>Generate</strong> compounds Month-1 values by the growth rate across all months. EBITDA = Net Revenue − Opex; PAT = EBITDA − D&A − Interest. Edit any cell below to override. <strong>Import</strong> reads Net Revenue, Opex, Interest Expense, D&A and BP Variance in either layout — metrics as rows or as columns.
         </div>
         {importStatus && (
           <div style={{
@@ -525,14 +532,10 @@ export default function CompanyPerformance() {
             {importStatus.ok ? '✓ ' : '⚠ '}{importStatus.text}
           </div>
         )}
-      </div>
+      </Section>
 
       {/* Gap Fillers by Project */}
-      <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>Gap Fillers by Project</div>
-          <button className="btn-sm btn-primary" onClick={addProject}>+ Add Project</button>
-        </div>
+      <Section title="Gap Fillers by Project" right={<button className="btn-sm btn-primary" onClick={addProject}>+ Add Project</button>}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {projects.length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>No projects yet. Add one to model incremental profit that fills the gap.</div>
@@ -566,17 +569,15 @@ export default function CompanyPerformance() {
             Tip: set a monthly amount & start month here for a quick baseline, or type directly into a project's cells in the Monthly P&L below to override individual months.
           </div>
         </div>
-      </div>
+      </Section>
 
       {/* P&L Grid */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>Monthly P&L</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className="btn-sm btn-export" onClick={() => exportPL('csv')}>CSV</button>
-            <button className="btn-sm btn-export" onClick={() => exportPL('excel')}>Excel</button>
-          </div>
-        </div>
+      <Section title="Monthly P&L" flush right={(
+        <>
+          <button className="btn-sm btn-export" onClick={() => exportPL('csv')}>CSV</button>
+          <button className="btn-sm btn-export" onClick={() => exportPL('excel')}>Excel</button>
+        </>
+      )}>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
             <thead>
@@ -594,6 +595,7 @@ export default function CompanyPerformance() {
               <PLCalcRow label="EBITDA" color="#16a34a" values={computed.map(r => r.ebitda)} total={totals.ebitda} />
               <PLInputRow row={INPUT_ROWS[3]} rows={rows} setCell={setCell} total={totals.da} />
               <PLCalcRow label="PAT" color="#6c4de6" values={computed.map(r => r.pat)} total={totals.pat} bold />
+              <PLInputRow row={BP_ROW} rows={rows} setCell={setCell} total={totals.bpVariance} />
 
               {/* Spacer */}
               <tr><td colSpan={computed.length + 2} style={{ height: 8, background: 'var(--surface2)', padding: 0 }} /></tr>
@@ -615,14 +617,13 @@ export default function CompanyPerformance() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Section>
 
       {/* Waterfall */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>
-            {waterfallMode === 'monthly' ? `Revenue Bridge — Monthly (${metricLabel})` : 'Profit Bridge — Fillers'}
-          </div>
+      <Section
+        flush
+        title={waterfallMode === 'monthly' ? `Revenue Bridge — Monthly (${metricLabel})` : 'Profit Bridge — Fillers'}
+        right={(
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--border)' }}>
               <button className={`tab-btn${waterfallMode === 'monthly' ? ' active' : ''}`} style={{ padding: '5px 12px', fontSize: 12 }} onClick={() => setWaterfallMode('monthly')}>Monthly Bridge</button>
@@ -653,7 +654,8 @@ export default function CompanyPerformance() {
             <button className="btn-sm btn-export" onClick={() => exportWaterfall('csv')}>CSV</button>
             <button className="btn-sm btn-export" onClick={() => exportWaterfall('excel')}>Excel</button>
           </div>
-        </div>
+        )}
+      >
         <div style={{ padding: 24 }}>
           <ResponsiveContainer width="100%" height={360}>
             <BarChart data={waterfallData} margin={{ top: 24, right: 20, left: 20, bottom: 10 }}>
@@ -715,13 +717,10 @@ export default function CompanyPerformance() {
             ))}
           </div>
         </div>
-      </div>
+      </Section>
 
       {/* Trend Chart */}
-      <div className="card" style={{ padding: 0 }}>
-        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-          <div className="section-title" style={{ marginBottom: 0 }}>P&L Trend</div>
-        </div>
+      <Section title="P&L Trend" flush>
         <div style={{ padding: 24 }}>
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={computed}>
@@ -738,7 +737,7 @@ export default function CompanyPerformance() {
             </LineChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Section>
     </div>
   );
 
@@ -753,6 +752,7 @@ export default function CompanyPerformance() {
       line('EBITDA', computed.map(r => r.ebitda), totals.ebitda),
       line('D&A', computed.map(r => r.da), totals.da),
       line('PAT', computed.map(r => r.pat), totals.pat),
+      line('BP Variance', computed.map(r => r.bpVariance), totals.bpVariance),
       line('Net Profit (Fillers)', computed.map(r => r.filler), totals.filler),
       ...projects.map(p => line(p.name, rows.map((_, i) => projAmt(p, i)), projFY(p))),
       line('Total Net Profit', computed.map(r => r.totalNetProfit), totals.totalNetProfit),

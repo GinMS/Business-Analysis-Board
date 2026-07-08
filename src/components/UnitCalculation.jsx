@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { exportCSV, exportExcel } from '../utils/exportData';
 import { useLocalStorage } from '../utils/useLocalStorage';
+import Section from './Section';
 
 const fmt = (n, dec = 2) => `$${Number(n).toFixed(dec)}`;
 const fmtPct = (n) => `${Number(n).toFixed(1)}%`;
@@ -116,8 +117,7 @@ export default function UnitCalculation() {
       </div>
 
       {/* Unit Label + Scale */}
-      <div className="card">
-        <div className="section-title">Configuration</div>
+      <Section title="Configuration">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
           <div>
             <label style={{ display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Unit Definition</label>
@@ -140,16 +140,15 @@ export default function UnitCalculation() {
             />
           </div>
         </div>
-      </div>
+      </Section>
 
       {/* Revenue + Cost Builder */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* Revenue */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>Revenue Items <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}>({unitLabel})</span></div>
-            <button className="btn-sm btn-green" onClick={addRevenue}>+ Add</button>
-          </div>
+        <Section
+          title={<>Revenue Items <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}>({unitLabel})</span></>}
+          right={<button className="btn-sm btn-green" onClick={addRevenue}>+ Add</button>}
+        >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {revenues.map(r => (
               <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -185,14 +184,13 @@ export default function UnitCalculation() {
               <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmt(metrics.totalRevenue)}</span>
             </div>
           </div>
-        </div>
+        </Section>
 
         {/* Costs */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <div className="section-title" style={{ marginBottom: 0 }}>Cost Items <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}>({unitLabel})</span></div>
-            <button className="btn-sm btn-red" onClick={addCost}>+ Add</button>
-          </div>
+        <Section
+          title={<>Cost Items <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 12 }}>({unitLabel})</span></>}
+          right={<button className="btn-sm btn-red" onClick={addCost}>+ Add</button>}
+        >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {costs.map(c => (
               <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -228,11 +226,11 @@ export default function UnitCalculation() {
               <span style={{ color: 'var(--red)', fontWeight: 700 }}>{fmt(metrics.totalCost)}</span>
             </div>
           </div>
-        </div>
+        </Section>
       </div>
 
       {/* Charts */}
-      <div className="card" style={{ padding: 0 }}>
+      <Section title="Charts" flush>
         <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 24px' }}>
           {[
             { key: 'waterfall', label: 'Waterfall' },
@@ -329,11 +327,10 @@ export default function UnitCalculation() {
             </div>
           )}
         </div>
-      </div>
+      </Section>
 
       {/* Summary Box */}
-      <div className="card">
-        <div className="section-title">Unit Economics Summary</div>
+      <Section title="Unit Economics Summary">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
           <SummaryRow label="Revenue per Unit" value={fmt(metrics.totalRevenue)} color="var(--accent)" />
           <SummaryRow label="Cost per Unit" value={fmt(metrics.totalCost)} color="var(--red)" />
@@ -400,7 +397,7 @@ export default function UnitCalculation() {
             </tbody>
           </table>
         </div>
-      </div>
+      </Section>
     </div>
   );
 }
