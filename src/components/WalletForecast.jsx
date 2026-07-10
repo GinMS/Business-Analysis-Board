@@ -34,9 +34,28 @@ const fmt = (n, decimals = 0) =>
 const fmtNum = (n) =>
   n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n)}`;
 
+const fmtRM = (n) =>
+  Math.abs(n) >= 1e6 ? `RM ${(n / 1e6).toFixed(1)}M`
+  : Math.abs(n) >= 1e3 ? `RM ${(n / 1e3).toFixed(0)}K`
+  : `RM ${Math.round(n)}`;
+const fmtRate = (n) => `RM ${Number(n || 0).toFixed(2)}`;
+const fmtMetric = (kind, v) => kind === 'money' ? fmtRM(v) : kind === 'rate' ? fmtRate(v) : fmtNum(v);
+
+const PROJECT_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#e11d48', '#8b5cf6', '#14b8a6'];
+
+// Projects Breakdown metrics (all editable per month)
+const PB_METRICS = [
+  { key: 'gtv',        label: 'GTV (RM)',         kind: 'money', color: 'var(--accent2)' },
+  { key: 'users',      label: 'Users',            kind: 'num',   color: 'var(--text)' },
+  { key: 'revPerUser', label: 'Revenue per User', kind: 'rate',  color: 'var(--amber)' },
+  { key: 'netRevenue', label: 'Net Revenue (RM)', kind: 'money', color: 'var(--accent)' },
+];
+
 export default function WalletForecast() {
   const [inputs, setInputs] = useLocalStorage('ba-wallet-inputs', defaultInputs);
   const [activeTab, setActiveTab] = useState('overview');
+  const [pbBase, setPbBase] = useLocalStorage('ba-wallet-pb-base', []);
+  const [pbProjects, setPbProjects] = useLocalStorage('ba-wallet-pb-projects', []);
 
   const set = (key, val) => setInputs(prev => ({ ...prev, [key]: Number(val) }));
 
@@ -93,6 +112,56 @@ export default function WalletForecast() {
     endUsers: data[data.length - 1]?.users ?? 0,
     avgMargin: data.length ? data.reduce((s, r) => s + r.margin, 0) / data.length : 0,
   }), [data]);
+
+  // ── Projects Breakdown: editable per-month base values + projects ──────────
+  const bkLabels = useMemo(() => Array.from({ length: inputs.months }, (_, i) => {
+    const m = (inputs.startMonth + i) % 12;
+    const y = inputs.startYear + Math.floor((inputs.startMonth + i) / 12);
+    return `${MONTHS[m]} ${y}`;
+  }), [inputs.months, inputs.startMonth, inputs.startYear]);
+
+  const baseAt = (i, key) => (pbBase[i] ? Number(pbBase[i][key]) || 0 : 0);
+  const setBaseCell = (i, key, val) => {
+    setPbBase(prev => {
+      const next = Array.from({ length: inputs.months }, (_, j) => prev[j] || { gtv: 0, users: 0, revPerUser: 0, netRevenue: 0 });
+      next[i] = { ...next[i], [key]: Number(val) || 0 };
+      return next;
+    });
+  };
+  const projAt = (p, i, key) => (i >= p.startIdx ? Number(p[key]) || 0 : 0);
+  const projFY = (p, key) => Number(p[key] || 0) * Math.max(0, inputs.months - p.startIdx);
+
+  const breakdown = useMemo(() => bkLabels.map((label, i) => {
+    const cell = (key) => baseAt(i, key) + pbProjects.reduce((s, p) => s + projAt(p, i, key), 0);
+    return { label, gtv: cell('gtv'), users: cell('users'), revPerUser: cell('revPerUser'), netRevenue: cell('netRevenue') };
+  }), [bkLabels, pbBase, pbProjects, inputs.months]);
+
+  const bkTotals = useMemo(() => ({
+    gtv: breakdown.reduce((s, r) => s + r.gtv, 0),
+    users: breakdown.reduce((s, r) => s + r.users, 0),
+    revPerUser: breakdown.reduce((s, r) => s + r.revPerUser, 0),
+    netRevenue: breakdown.reduce((s, r) => s + r.netRevenue, 0),
+  }), [breakdown]);
+
+  const addPbProject = () => {
+    const id = (pbProjects.reduce((m, p) => Math.max(m, p.id), 0) || 0) + 1;
+    setPbProjects(prev => [...prev, { id, name: `Project ${prev.length + 1}`, gtv: 0, users: 0, revPerUser: 0, netRevenue: 0, startIdx: 0 }]);
+  };
+  const updatePbProject = (id, key, val) =>
+    setPbProjects(prev => prev.map(p => p.id === id ? { ...p, [key]: key === 'name' ? val : Number(val) || 0 } : p));
+  const removePbProject = (id) => setPbProjects(prev => prev.filter(p => p.id !== id));
+
+  const exportBreakdown = (type) => {
+    const headers = ['Metric', ...breakdown.map(r => r.label), 'Total'];
+    const rows = [
+      ['GTV (RM)', ...breakdown.map(r => r.gtv), bkTotals.gtv],
+      ['Users', ...breakdown.map(r => r.users), bkTotals.users],
+      ['Revenue per User', ...breakdown.map(r => r.revPerUser), bkTotals.revPerUser],
+      ['Net Revenue (RM)', ...breakdown.map(r => r.netRevenue), bkTotals.netRevenue],
+    ];
+    if (type === 'csv') exportCSV('wallet-projects-breakdown', headers, rows);
+    else exportExcel('wallet-projects-breakdown', headers, rows);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -283,6 +352,104 @@ export default function WalletForecast() {
           </table>
         </div>
       </Section>
+
+      {/* Projects Breakdown (editable) */}
+      <Section
+        title="Projects Breakdown"
+        flush
+        right={(
+          <>
+            <button className="btn-sm btn-export" onClick={() => exportBreakdown('csv')}>CSV</button>
+            <button className="btn-sm btn-export" onClick={() => exportBreakdown('excel')}>Excel</button>
+          </>
+        )}
+      >
+        <div style={{ padding: '10px 24px 0', fontSize: 11, color: 'var(--muted)' }}>
+          Edit each metric per month. Totals include any projects added below.
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left', minWidth: 170 }}>Metric</th>
+                {bkLabels.map((l, i) => <th key={i} style={{ minWidth: 110 }}>{l}</th>)}
+                <th style={{ color: 'var(--accent)', fontWeight: 700 }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {PB_METRICS.map(m => (
+                <tr key={m.key}>
+                  <td style={{ color: m.color, fontWeight: 600 }}>{m.label} (input)</td>
+                  {bkLabels.map((_, i) => (
+                    <td key={i} style={{ padding: '6px 8px' }}>
+                      <input className="cell-input" type="number" value={baseAt(i, m.key) || ''} placeholder="0"
+                        onChange={e => setBaseCell(i, m.key, e.target.value)} />
+                    </td>
+                  ))}
+                  <td style={{ color: m.color, fontWeight: 700 }}>{fmtMetric(m.kind, breakdown.reduce((s, _r, i) => s + baseAt(i, m.key), 0))}</td>
+                </tr>
+              ))}
+              {pbProjects.map((p, idx) => PB_METRICS.map(m => (
+                <tr key={`${p.id}-${m.key}`}>
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], paddingLeft: 28 }}>{p.name} · {m.label}</td>
+                  {bkLabels.map((_, i) => <td key={i}>{fmtMetric(m.kind, projAt(p, i, m.key))}</td>)}
+                  <td style={{ color: PROJECT_COLORS[idx % PROJECT_COLORS.length], fontWeight: 700 }}>{fmtMetric(m.kind, projFY(p, m.key))}</td>
+                </tr>
+              )))}
+              <tr><td colSpan={bkLabels.length + 2} style={{ height: 8, background: 'var(--surface2)', padding: 0 }} /></tr>
+              {PB_METRICS.map(m => (
+                <tr key={`tot-${m.key}`}>
+                  <td style={{ color: m.color, fontWeight: 700 }}>{m.label} — Total</td>
+                  {breakdown.map((r, i) => <td key={i} style={{ color: m.color, fontWeight: 600 }}>{fmtMetric(m.kind, r[m.key])}</td>)}
+                  <td style={{ color: m.color, fontWeight: 700 }}>{fmtMetric(m.kind, bkTotals[m.key])}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* Projects Breakdown Projects */}
+      <Section
+        title="Projects Breakdown Inputs"
+        right={<button className="btn-sm btn-primary" onClick={addPbProject}>+ Add Project</button>}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {pbProjects.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+              No projects yet. Add one to layer GTV, Users, Revenue per User and Net Revenue into the breakdown above.
+            </div>
+          )}
+          {pbProjects.map((p, idx) => (
+            <div key={p.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8 }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: PROJECT_COLORS[idx % PROJECT_COLORS.length], marginBottom: 8 }} />
+              <FieldBox label="Project Name">
+                <input className="input" style={{ width: 140 }} value={p.name} onChange={e => updatePbProject(p.id, 'name', e.target.value)} />
+              </FieldBox>
+              {PB_METRICS.map(m => (
+                <FieldBox key={m.key} label={`${m.label} / mo`}>
+                  <input className="input" type="number" style={{ width: 130 }} value={p[m.key]} onChange={e => updatePbProject(p.id, m.key, e.target.value)} />
+                </FieldBox>
+              ))}
+              <FieldBox label="Starts">
+                <select className="input" style={{ width: 130 }} value={p.startIdx} onChange={e => updatePbProject(p.id, 'startIdx', e.target.value)}>
+                  {bkLabels.map((l, i) => <option key={i} value={i}>{l}</option>)}
+                </select>
+              </FieldBox>
+              <button className="btn-sm btn-export" style={{ marginBottom: 2 }} onClick={() => removePbProject(p.id)}>Remove</button>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function FieldBox({ label, children }) {
+  return (
+    <div>
+      <label style={{ display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{label}</label>
+      {children}
     </div>
   );
 }
