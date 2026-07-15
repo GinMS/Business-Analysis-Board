@@ -57,6 +57,27 @@ Apple Developer signing identity to the `build.mac` config.
   and persistent, so your inputs, projects, invoices, etc. survive restarts.
 - External links (e.g. Google sign‑in) open in your default browser.
 
+## App icon
+
+The app icon lives at `build/icon.png` (1024×1024). electron-builder converts
+it to the platform formats (`.icns` / `.ico`) automatically at package time.
+Replace that file to rebrand — keep it square and at least 512×512.
+
+## Automated builds (GitHub Actions)
+
+`.github/workflows/desktop-build.yml` builds all three platforms in CI:
+
+- **Manually**: Actions tab → “Build desktop apps” → *Run workflow*. The
+  installers are uploaded as downloadable artifacts.
+- **On release**: push a version tag and the built installers are attached to
+  the matching GitHub Release automatically:
+  ```bash
+  git tag v1.0.0 && git push origin v1.0.0
+  ```
+
+Each OS is built on its own runner (macOS → dmg/zip, Windows → exe, Linux →
+AppImage), so you get all platforms without needing each machine yourself.
+
 ## Data & auth
 
 - All data stays **on your machine** in the app's local storage.

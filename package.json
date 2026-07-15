@@ -46,18 +46,22 @@
       "electron/**/*"
     ],
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "mac": {
       "target": ["dmg", "zip"],
-      "category": "public.app-category.business"
+      "category": "public.app-category.business",
+      "icon": "build/icon.png"
     },
     "win": {
-      "target": ["nsis", "portable"]
+      "target": ["nsis", "portable"],
+      "icon": "build/icon.png"
     },
     "linux": {
       "target": ["AppImage"],
-      "category": "Office"
+      "category": "Office",
+      "icon": "build/icon.png"
     }
   }
 }

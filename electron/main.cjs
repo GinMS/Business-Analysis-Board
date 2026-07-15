@@ -52,6 +52,7 @@ async function createWindow() {
     minHeight: 680,
     backgroundColor: '#f4f6fb',
     title: 'Business Analysis Board',
+    icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
