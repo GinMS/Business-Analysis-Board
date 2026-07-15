@@ -4,17 +4,23 @@ import LoanForecast from './components/LoanForecast';
 import UnitCalculation from './components/UnitCalculation';
 import RevenueShare from './components/RevenueShare';
 import CompanyPerformance from './components/CompanyPerformance';
+import CostAnalysis from './components/CostAnalysis';
+import Invoices from './components/Invoices';
 import Login from './components/Login';
 import { useAuth } from './utils/useAuth';
 import './App.css';
 
 const TABS = [
-  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊' },
-  { id: 'wallet',      label: 'Wallet Forecast',       subtitle: 'Business Case — Monthly', icon: '💳' },
-  { id: 'loan',        label: 'Loan Forecast',          subtitle: 'Business Case — Monthly', icon: '🏦' },
-  { id: 'unit',        label: 'Unit Calculation',       subtitle: 'Economics Per Unit',      icon: '📐' },
-  { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝' },
+  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊', group: 'Modules' },
+  { id: 'wallet',      label: 'Wallet Forecast',       subtitle: 'Business Case — Monthly', icon: '💳', group: 'Modules' },
+  { id: 'loan',        label: 'Loan Forecast',          subtitle: 'Business Case — Monthly', icon: '🏦', group: 'Modules' },
+  { id: 'unit',        label: 'Unit Calculation',       subtitle: 'Economics Per Unit',      icon: '📐', group: 'Modules' },
+  { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝', group: 'Modules' },
+  { id: 'cost',        label: 'Cost Analysis',          subtitle: 'Monthly Recurring Costs', icon: '🧾', group: 'Billing Matters' },
+  { id: 'invoices',    label: 'Invoices',               subtitle: 'Due & Paid Register',     icon: '📁', group: 'Billing Matters' },
 ];
+
+const NAV_GROUPS = ['Modules', 'Billing Matters'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('company');
@@ -56,21 +62,25 @@ export default function App() {
         </div>
 
         <nav className="sidebar-nav">
-          <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8, paddingLeft: 12 }}>
-            Modules
-          </div>
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              className={`nav-item${activeTab === tab.id ? ' active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="nav-icon">{tab.icon}</span>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 13 }}>{tab.label}</div>
-                <div className="nav-subtitle">{tab.subtitle}</div>
+          {NAV_GROUPS.map(group => (
+            <div key={group}>
+              <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--muted)', textTransform: 'uppercase', margin: '4px 0 8px', paddingLeft: 12 }}>
+                {group}
               </div>
-            </button>
+              {TABS.filter(t => t.group === group).map(tab => (
+                <button
+                  key={tab.id}
+                  className={`nav-item${activeTab === tab.id ? ' active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="nav-icon">{tab.icon}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{tab.label}</div>
+                    <div className="nav-subtitle">{tab.subtitle}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
@@ -123,6 +133,8 @@ export default function App() {
           {activeTab === 'unit'          && <UnitCalculation />}
           {activeTab === 'revenue-share' && <RevenueShare />}
           {activeTab === 'company'       && <CompanyPerformance />}
+          {activeTab === 'cost'          && <CostAnalysis />}
+          {activeTab === 'invoices'      && <Invoices />}
         </div>
       </main>
     </div>
