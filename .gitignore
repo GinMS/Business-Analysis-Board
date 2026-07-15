@@ -18,6 +18,10 @@ firebase-debug.log
 .env
 .env.local
 
+# Electron / desktop build output
+release
+
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
