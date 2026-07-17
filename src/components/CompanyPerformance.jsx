@@ -187,9 +187,9 @@ export default function CompanyPerformance() {
   const [rows, setRows] = useLocalStorage('ba-company-rows', makeEmptyRows(12, 0, new Date().getFullYear()));
   const [assumptions, setAssumptions] = useLocalStorage('ba-company-assumptions', defaultAssumptions);
   const [projects, setProjects] = useLocalStorage('ba-company-projects', [
-    { id: 1, name: 'Project 1', amount: 50000, startIdx: 0 },
-    { id: 2, name: 'Project 2', amount: 80000, startIdx: 3 },
-    { id: 3, name: 'Project 3', amount: 30000, startIdx: 8 },
+    { id: 1, name: 'Project 1', amount: 50000, startIdx: 0, sort: 1 },
+    { id: 2, name: 'Project 2', amount: 80000, startIdx: 3, sort: 2 },
+    { id: 3, name: 'Project 3', amount: 30000, startIdx: 8, sort: 3 },
   ]);
   const [waterfallMode, setWaterfallMode] = useState('monthly'); // 'monthly' | 'profit'
   const [waterfallMetric, setWaterfallMetric] = useState('totalNetProfit');
@@ -231,12 +231,19 @@ export default function CompanyPerformance() {
   // ── Projects (gap fillers) ─────────────────────────────────────────────────
   const addProject = () => {
     const nextId = (projects.reduce((m, p) => Math.max(m, p.id), 0) || 0) + 1;
-    setProjects(prev => [...prev, { id: nextId, name: `Project ${prev.length + 1}`, amount: 0, startIdx: 0 }]);
+    const nextSort = (projects.reduce((m, p) => Math.max(m, p.sort ?? 0), 0) || 0) + 1;
+    setProjects(prev => [...prev, { id: nextId, name: `Project ${prev.length + 1}`, amount: 0, startIdx: 0, sort: nextSort }]);
   };
   const updateProject = (id, key, val) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, [key]: key === 'name' ? val : Number(val) || 0 } : p));
   };
   const removeProject = (id) => setProjects(prev => prev.filter(p => p.id !== id));
+
+  // Projects ordered by their editable "sort" number (stable for ties/blanks).
+  const sortedProjects = useMemo(
+    () => projects.map((p, i) => [p, i]).sort((a, b) => ((a[0].sort ?? 0) - (b[0].sort ?? 0)) || (a[1] - b[1])).map(x => x[0]),
+    [projects]
+  );
   const resetProjectOverrides = (id) => setProjects(prev => prev.map(p => p.id === id ? { ...p, overrides: {} } : p));
 
   // Contribution of a project in a given month index.
@@ -281,7 +288,7 @@ export default function CompanyPerformance() {
       const base = totals.pat;
       let running = base;
       bars.push({ name: 'Base PAT', invisible: Math.min(0, base), value: Math.abs(base), increment: 0, raw: base, type: 'total' });
-      projects.forEach((p) => {
+      sortedProjects.forEach((p) => {
         const v = projFY(p);
         const start = running;
         const end = running + v;
@@ -328,7 +335,7 @@ export default function CompanyPerformance() {
     });
     bars.push({ name: 'FY Total', fullLabel: 'FY Total', invisible: Math.min(0, cumulative), value: Math.abs(cumulative), increment: 0, raw: cumulative, type: 'total' });
     return bars;
-  }, [waterfallMode, waterfallMetric, computed, projects, totals]);
+  }, [waterfallMode, waterfallMetric, computed, sortedProjects, totals]);
 
   const metricLabel = {
     totalNetProfit: 'Total Net Profit', pat: 'PAT', netRevenue: 'Net Revenue', ebitda: 'EBITDA',
@@ -540,9 +547,12 @@ export default function CompanyPerformance() {
           {projects.length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>No projects yet. Add one to model incremental profit that fills the gap.</div>
           )}
-          {projects.map((p, idx) => (
+          {sortedProjects.map((p, idx) => (
             <div key={p.id} style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8 }}>
               <span style={{ width: 12, height: 12, borderRadius: 3, background: PROJECT_COLORS[idx % PROJECT_COLORS.length], display: 'inline-block', marginBottom: 8 }} />
+              <Field label="Sort">
+                <input className="input" type="number" style={{ width: 70 }} value={p.sort ?? 0} onChange={e => updateProject(p.id, 'sort', e.target.value)} title="Sequence order — lower shows first" />
+              </Field>
               <Field label="Project Name">
                 <input className="input" style={{ width: 160 }} value={p.name} onChange={e => updateProject(p.id, 'name', e.target.value)} />
               </Field>
@@ -602,7 +612,7 @@ export default function CompanyPerformance() {
 
               {/* Fillers — project rows are editable per month */}
               <PLCalcRow label="Net Profit (Fillers)" color="#0ea5e9" values={computed.map(r => r.filler)} total={totals.filler} />
-              {projects.map((p, idx) => (
+              {sortedProjects.map((p, idx) => (
                 <PLProjectRow
                   key={p.id}
                   project={p}
@@ -754,7 +764,7 @@ export default function CompanyPerformance() {
       line('PAT', computed.map(r => r.pat), totals.pat),
       line('BP Variance', computed.map(r => r.bpVariance), totals.bpVariance),
       line('Net Profit (Fillers)', computed.map(r => r.filler), totals.filler),
-      ...projects.map(p => line(p.name, rows.map((_, i) => projAmt(p, i)), projFY(p))),
+      ...sortedProjects.map(p => line(p.name, rows.map((_, i) => projAmt(p, i)), projFY(p))),
       line('Total Net Profit', computed.map(r => r.totalNetProfit), totals.totalNetProfit),
     ];
     if (type === 'csv') exportCSV('company-pl', headers, expRows);
