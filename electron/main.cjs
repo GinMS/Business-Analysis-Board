@@ -3,9 +3,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-// Serve the built SPA over a loopback HTTP server. Using an http:// origin
-// (instead of file://) keeps localStorage stable and persistent across runs.
+// Use one consistent storage folder whether running `npm run app` (dev) or the
+// packaged .app, so data lives in the same place either way.
+app.setName('Business Analysis Board');
+
+// Serve the built SPA over a loopback HTTP server on a FIXED port. localStorage
+// is keyed by origin *including the port*, so the port must be stable across
+// launches for saved data to load again — a random port would orphan it.
 const DIST = path.join(__dirname, '..', 'dist');
+const FIXED_PORT = 34517;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -39,8 +45,10 @@ function startServer() {
         res.end('Server error');
       }
     });
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+    // If the fixed port is busy (e.g. a second window of this app), reuse the
+    // same origin so localStorage stays consistent.
+    server.on('error', () => resolve(FIXED_PORT));
+    server.listen(FIXED_PORT, '127.0.0.1', () => resolve(FIXED_PORT));
   });
 }
 
