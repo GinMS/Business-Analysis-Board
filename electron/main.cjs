@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, dialog } = require('electron');
+const { app, BrowserWindow, shell, dialog, nativeTheme } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -60,7 +60,9 @@ async function createWindow() {
     height: 960,
     minWidth: 1024,
     minHeight: 680,
-    backgroundColor: '#f4f6fb',
+    // Match the OS theme so the window doesn't flash the wrong colour before
+    // the app's own theme (which also defaults to the system preference) loads.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0f1420' : '#f4f6fb',
     title: 'Business Analysis Board',
     icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
