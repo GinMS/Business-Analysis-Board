@@ -1,7 +1,9 @@
-const { app, BrowserWindow, shell } = require('electron');
+const { app, BrowserWindow, shell, dialog } = require('electron');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+
+const RELEASES_URL = 'https://github.com/ginms/business-analysis-board/releases/latest';
 
 // Use one consistent storage folder whether running `npm run app` (dev) or the
 // packaged .app, so data lives in the same place either way.
@@ -81,9 +83,62 @@ async function createWindow() {
     const port = await startServer();
     await win.loadURL(`http://127.0.0.1:${port}/`);
   }
+  return win;
 }
 
-app.whenReady().then(createWindow);
+// Background auto-update. Downloads a newer release and applies it on restart.
+// Only runs in the packaged app; no-ops in dev.
+function setupAutoUpdate(win) {
+  if (!app.isPackaged) return;
+  let updater;
+  try {
+    ({ autoUpdater: updater } = require('electron-updater'));
+  } catch { return; }
+
+  updater.autoDownload = true;
+  updater.autoInstallOnAppQuit = true;
+
+  let pendingVersion = null;
+
+  updater.on('update-available', (info) => { pendingVersion = info?.version || null; });
+
+  // Signed build: the update downloaded and can be applied on restart.
+  updater.on('update-downloaded', async (info) => {
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'info',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Version ${info?.version || ''} is ready`,
+      detail: 'Restart to apply the update. Your data is kept.',
+    });
+    if (response === 0) updater.quitAndInstall();
+  });
+
+  // Unsigned macOS builds can't self-apply (Squirrel.Mac needs a code
+  // signature). If we knew an update existed, offer a manual download instead.
+  updater.on('error', async (err) => {
+    console.log('Auto-update note:', err?.message);
+    if (!pendingVersion) return; // network/no-update errors: stay silent
+    const { response } = await dialog.showMessageBox(win, {
+      type: 'info',
+      buttons: ['Download', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Version ${pendingVersion} is available`,
+      detail: 'This build can’t update itself automatically. Open the download page to get the latest version.',
+    });
+    if (response === 0) shell.openExternal(RELEASES_URL);
+    pendingVersion = null;
+  });
+
+  updater.checkForUpdates().catch(() => {});
+}
+
+app.whenReady().then(async () => {
+  const win = await createWindow();
+  setTimeout(() => setupAutoUpdate(win), 3000);
+});
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();

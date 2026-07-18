@@ -78,6 +78,42 @@ Replace that file to rebrand — keep it square and at least 512×512.
 Each OS is built on its own runner (macOS → dmg/zip, Windows → exe, Linux →
 AppImage), so you get all platforms without needing each machine yourself.
 
+## Auto-updates (no reinstall)
+
+Installed apps can update themselves — no manual reinstall. On launch the app
+checks the GitHub Releases feed; if a newer version is published it downloads in
+the background and, when ready, asks to **Restart now** to apply it.
+
+### Shipping an update
+
+1. Bump the version in `package.json` (e.g. `0.0.0` → `1.0.1`).
+2. Tag and push:
+   ```bash
+   git commit -am "release v1.0.1"
+   git tag v1.0.1 && git push origin v1.0.1
+   ```
+3. CI builds all platforms and **publishes** them to the matching GitHub
+   Release, including the `latest*.yml` metadata the updater reads.
+
+Users on an older version get the update automatically next time they open the
+app. (Updater `provider` is set in `package.json` → `build.publish`; point
+`owner`/`repo` at your GitHub repo.)
+
+### ⚠️ macOS requires code signing
+
+macOS will only **apply** an auto-update if the app is **signed with an Apple
+Developer ID and notarized** — Squirrel.Mac refuses unsigned updates. So:
+
+- **Windows & Linux:** auto-update works out of the box (even unsigned).
+- **macOS, unsigned:** the app still *detects* a new version and shows a
+  **Download** button that opens the Releases page — you then grab the new
+  `.dmg` manually (a lighter "reinstall", but not fully automatic).
+- **macOS, fully automatic:** add an Apple Developer ID. In CI set
+  `CSC_LINK` (base64 of your `.p12`), `CSC_KEY_PASSWORD`, and the notarization
+  secrets (`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`), and
+  remove `CSC_IDENTITY_AUTO_DISCOVERY: false` from the workflow. Then macOS
+  auto-update works like Windows/Linux.
+
 ## Backup & moving data between machines
 
 Data lives in the app's local storage (per machine — it does not sync

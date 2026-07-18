@@ -32,6 +32,7 @@
     "@vitejs/plugin-react": "^6.0.1",
     "electron": "^43.1.1",
     "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
@@ -50,18 +51,33 @@
       "buildResources": "build"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.business",
       "icon": "build/icon.png"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "build/icon.png"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Office",
       "icon": "build/icon.png"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ginms",
+        "repo": "business-analysis-board"
+      }
+    ]
   }
 }
