@@ -16,6 +16,23 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 8px rgba(0,0,0,0.04);
 }
 
+/* Dark theme — applied when the root has data-theme="dark". */
+:root[data-theme="dark"] {
+  --bg: #0f1420;
+  --surface: #171d2b;
+  --surface2: #1f2739;
+  --border: #2b3448;
+  --accent: #5b9bff;
+  --accent2: #9b82f2;
+  --green: #34d399;
+  --red: #f87171;
+  --amber: #fbbf24;
+  --text: #e6eaf2;
+  --muted: #93a0b5;
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 2px 12px rgba(0,0,0,0.3);
+  color-scheme: dark;
+}
+
 body {
   background: var(--bg);
   color: var(--text);

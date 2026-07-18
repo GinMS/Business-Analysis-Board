@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import WalletForecast from './components/WalletForecast';
 import LoanForecast from './components/LoanForecast';
 import UnitCalculation from './components/UnitCalculation';
@@ -26,6 +26,13 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('company');
   const active = TABS.find(t => t.id === activeTab);
   const { user, loading, error, login, logout, firebaseReady } = useAuth();
+
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'light');
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('ba-theme', theme); } catch { /* ignore */ }
+  }, [theme]);
+  const toggleTheme = () => setTheme(t => (t === 'dark' ? 'light' : 'dark'));
 
   // Auth gate: when Firebase is configured, require a Google sign-in first.
   if (firebaseReady && loading) {
@@ -189,8 +196,22 @@ export default function App() {
             <h1 className="page-title">{active?.label}</h1>
             <p className="page-subtitle">{active?.subtitle}</p>
           </div>
-          <div className="header-badge">
-            {new Date().toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label="Toggle theme"
+              style={{
+                width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, background: 'var(--surface)', color: 'var(--text)',
+                border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer',
+              }}
+            >
+              {theme === 'dark' ? '☀' : '☾'}
+            </button>
+            <div className="header-badge">
+              {new Date().toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })}
+            </div>
           </div>
         </div>
 
