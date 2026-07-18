@@ -21,6 +21,12 @@ firebase-debug.log
 # Electron / desktop build output
 release
 
+# Data backups — keep local only, never commit to git
+business-analysis-backup-*.json
+*.backup.json
+backups/
+data/
+
 
 # Editor directories and files
 .vscode/*
