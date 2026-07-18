@@ -83,11 +83,11 @@ AppImage), so you get all platforms without needing each machine yourself.
 Data lives in the app's local storage (per machine — it does not sync
 automatically). To safeguard it or move it to another desktop:
 
-1. In the sidebar footer, click **⭳ Save backup** — this downloads a single
+1. In the sidebar footer, click **↓ Save backup** — this downloads a single
    `business-analysis-backup-YYYY-MM-DD.json` file containing everything you've
    entered/imported/changed across all tabs.
 2. Keep that file somewhere safe (or copy it to another computer).
-3. On any install, click **⭱ Load backup** and pick the file to restore it
+3. On any install, click **↑ Load backup** and pick the file to restore it
    (this replaces the current data, after a confirmation).
 
 The backup is a plain, human-readable JSON file, so it's easy to store,

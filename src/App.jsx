@@ -151,7 +151,7 @@ export default function App() {
                 borderRadius: 8, cursor: 'pointer',
               }}
             >
-              ⭳ Save backup
+              ↓ Save backup
             </button>
             <button
               onClick={() => backupFileRef.current?.click()}
@@ -162,7 +162,7 @@ export default function App() {
                 borderRadius: 8, cursor: 'pointer',
               }}
             >
-              ⭱ Load backup
+              ↑ Load backup
             </button>
             <input ref={backupFileRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={loadBackup} />
           </div>
