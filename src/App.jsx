@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import WalletForecast from './components/WalletForecast';
 import LoanForecast from './components/LoanForecast';
 import UnitCalculation from './components/UnitCalculation';
@@ -47,6 +47,48 @@ export default function App() {
         .forEach(k => localStorage.removeItem(k));
     } catch { /* ignore */ }
     window.location.reload();
+  };
+
+  const backupFileRef = useRef();
+
+  // Save every ba-* value into one portable JSON file.
+  const saveBackup = () => {
+    const data = {};
+    Object.keys(localStorage).filter(k => k.startsWith('ba-')).forEach(k => {
+      try { data[k] = JSON.parse(localStorage.getItem(k)); }
+      catch { data[k] = localStorage.getItem(k); }
+    });
+    const payload = { app: 'Business Analysis Board', version: 1, exportedAt: new Date().toISOString(), data };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `business-analysis-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Restore data from a backup JSON file (replaces current data).
+  const loadBackup = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        const data = parsed && parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+        const keys = Object.keys(data).filter(k => k.startsWith('ba-'));
+        if (!keys.length) { alert('No dashboard data found in that file.'); return; }
+        if (!window.confirm(`Load ${keys.length} data section(s) from "${file.name}"? This replaces your current data.`)) return;
+        keys.forEach(k => localStorage.setItem(k, JSON.stringify(data[k])));
+        window.location.reload();
+      } catch {
+        alert('That file could not be read as a valid backup JSON.');
+      } finally {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -99,6 +141,31 @@ export default function App() {
               </button>
             </div>
           )}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <button
+              onClick={saveBackup}
+              title="Download all your data as a JSON backup file"
+              style={{
+                flex: 1, padding: '8px 6px', fontSize: 12, fontWeight: 600,
+                color: 'var(--accent)', background: 'transparent', border: '1px solid var(--border)',
+                borderRadius: 8, cursor: 'pointer',
+              }}
+            >
+              ⭳ Save backup
+            </button>
+            <button
+              onClick={() => backupFileRef.current?.click()}
+              title="Restore data from a backup JSON file"
+              style={{
+                flex: 1, padding: '8px 6px', fontSize: 12, fontWeight: 600,
+                color: 'var(--text)', background: 'transparent', border: '1px solid var(--border)',
+                borderRadius: 8, cursor: 'pointer',
+              }}
+            >
+              ⭱ Load backup
+            </button>
+            <input ref={backupFileRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={loadBackup} />
+          </div>
           <button
             onClick={resetAllData}
             title="Erase all saved data on every tab and reset to defaults"
