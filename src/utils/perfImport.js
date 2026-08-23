@@ -131,6 +131,67 @@ function extractFeedback(wb) {
   return out;
 }
 
+// "19.5mil" -> 19500000, "200mil" -> 2e8, "350k" -> 350000, numbers as-is.
+function parseMoney(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return v;
+  const s = String(v).trim().toLowerCase().replace(/rm|,|\s/g, '');
+  const m = s.match(/^([\d.]+)\s*(mil|m|k)?$/);
+  if (!m) { const n = Number(s); return isFinite(n) ? n : null; }
+  const n = Number(m[1]);
+  if (!isFinite(n)) return null;
+  if (m[2] === 'mil' || m[2] === 'm') return n * 1e6;
+  if (m[2] === 'k') return n * 1e3;
+  return n;
+}
+
+const ANNUAL_LABELS = { 'mtu': 'mtu', 'eb users': 'ebUsers', 'nr': 'nr', 'loan book': 'loanBook', 'cost': 'cost' };
+
+// Extract targets: annual KPI targets (Dashboard) + monthly total-NR target curve (Business Performance).
+function extractTargets(wb) {
+  const annual = {};
+  const dash = sheetAoa(wb, 'Dashboard >>') || sheetAoa(wb, 'Dashboard');
+  if (dash) {
+    // Locate the 'Target' column from the header row.
+    let targetCol = -1;
+    for (const row of dash) {
+      const idx = (row || []).findIndex(c => norm(c) === 'target');
+      if (idx >= 0) { targetCol = idx; break; }
+    }
+    for (const row of dash || []) {
+      if (!row) continue;
+      const label = row.find(c => ANNUAL_LABELS[norm(c)]);
+      if (!label) continue;
+      const key = ANNUAL_LABELS[norm(label)];
+      const raw = targetCol >= 0 ? row[targetCol] : row[row.indexOf(label) + 1];
+      const val = parseMoney(raw);
+      if (val != null && annual[key] == null) annual[key] = val;
+    }
+  }
+
+  // Monthly total-NR target curve: first "Target Performance" row on Business Performance.
+  const monthlyNrTotal = {};
+  let year = '';
+  const bp = sheetAoa(wb, 'Business Performance');
+  if (bp) {
+    const titleRow = bp.find(r => (r || []).some(c => /\b(20\d{2})\b/.test(String(c))));
+    if (titleRow) { const m = String(titleRow.find(c => /\b20\d{2}\b/.test(String(c)))).match(/20\d{2}/); if (m) year = m[0]; }
+    // The 'Target Performance' label may sit in any leading column; months follow it.
+    let tRow = null, labelIdx = -1;
+    for (const r of bp) {
+      const idx = (r || []).findIndex(c => norm(c) === 'target performance');
+      if (idx >= 0) { tRow = r; labelIdx = idx; break; }
+    }
+    if (tRow && year) {
+      for (let mo = 1; mo <= 12; mo++) {
+        const v = Number(tRow[labelIdx + mo]);
+        if (isFinite(v) && v) monthlyNrTotal[`${year}-${String(mo).padStart(2, '0')}`] = v;
+      }
+    }
+  }
+  return { annual, monthlyNrTotal, year };
+}
+
 export function seedFromPerformanceWorkbook(buf) {
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const plans = [
@@ -141,11 +202,25 @@ export function seedFromPerformanceWorkbook(buf) {
   const launches = extractLaunches(wb);
   const partners = extractPartners(wb);
   const feedback = extractFeedback(wb);
+  const t = extractTargets(wb);
 
   if (plans.length) localStorage.setItem('ba-biz-plans', JSON.stringify(plans));
   if (launches.length) localStorage.setItem('ba-biz-launches', JSON.stringify(launches));
   if (partners.length) localStorage.setItem('ba-biz-partners', JSON.stringify(partners));
   if (feedback.length) localStorage.setItem('ba-biz-feedback', JSON.stringify(feedback));
 
-  return { plans: plans.length, launches: launches.length, partners: partners.length, feedback: feedback.length };
+  // Merge targets without clobbering user-typed per-stream targets.
+  let existing = {};
+  try { existing = JSON.parse(localStorage.getItem('ba-biz-targets') || '{}'); } catch { /* ignore */ }
+  const merged = {
+    streams: existing.streams || {},
+    annual: { ...(existing.annual || {}), ...t.annual },
+    monthlyNrTotal: { ...(existing.monthlyNrTotal || {}), ...t.monthlyNrTotal },
+  };
+  localStorage.setItem('ba-biz-targets', JSON.stringify(merged));
+
+  return {
+    plans: plans.length, launches: launches.length, partners: partners.length, feedback: feedback.length,
+    'annual targets': Object.keys(t.annual).length, 'monthly NR targets': Object.keys(t.monthlyNrTotal).length,
+  };
 }

@@ -33,6 +33,7 @@ export default function BusinessPerformance() {
   const [manual, setManual] = useLocalStorage('ba-biz-manual', {});          // manual stream actuals
   const [targets, setTargets] = useLocalStorage('ba-biz-targets', { streams: {}, annual: {} });
   const [kpiManual, setKpiManual] = useLocalStorage('ba-biz-kpi', {});       // manual KPI actuals (loanBook, cost)
+  const [plans] = useLocalStorage('ba-biz-plans', []);                       // pipeline deals (weighted vs gap)
   const [streams] = useLocalStorage('ba-biz-streams', DEFAULT_STREAMS);
   const [view, setView] = useLocalStorage('ba-biz-view', 'actual');         // actual | target | achievement
   const years = yearsIn(actuals);
@@ -70,8 +71,16 @@ export default function BusinessPerformance() {
     return { perStreamFY, monthTotals };
   }, [streams, actuals, manual, targets, activeYear]);
 
+  // Monthly total NR target: prefer the workbook's total-NR curve, else sum of per-stream targets.
+  const targetAt = (ym, i) => targets.monthlyNrTotal?.[ym] ?? grid.monthTotals[i].target;
+
   const nrYtd = grid.monthTotals.reduce((s, m) => s + m.actual, 0);
-  const nrTargetYtd = grid.monthTotals.reduce((s, m) => s + m.target, 0);
+  const nrTargetYtd = monthsOfYear.reduce((s, ym, i) => s + targetAt(ym, i), 0);
+
+  // Weighted pipeline (from Plans) vs the NR gap to the annual target.
+  const weightedMonthly = plans.reduce((s, p) => s + (Number(p.estRevenue) || 0) * (Number(p.winProb) || 0) / 100, 0);
+  const nrAnnualTarget = targets.annual?.nr || 0;
+  const nrGap = Math.max(0, nrAnnualTarget - nrYtd);
 
   const latestKpi = (metric) => {
     const series = actuals.kpis?.[metric] || {};
@@ -86,7 +95,7 @@ export default function BusinessPerformance() {
   };
 
   const chartData = useMemo(() => monthsOfYear.map((ym, i) => {
-    const row = { label: MONTHS[i], Target: grid.monthTotals[i].target };
+    const row = { label: MONTHS[i], Target: targetAt(ym, i) };
     streams.forEach(s => { row[s.label] = streamActual(s, ym); });
     return row;
   }), [monthsOfYear, streams, grid]);
@@ -282,11 +291,14 @@ export default function BusinessPerformance() {
               })}
               <tr>
                 <td style={{ fontWeight: 700 }}>Total</td>
-                {grid.monthTotals.map((m, i) => (
-                  <td key={i} style={{ fontWeight: 700 }}>
-                    {view === 'achievement' ? (m.target ? `${Math.round(100 * m.actual / m.target)}%` : '—') : fmtRM(view === 'target' ? m.target : m.actual)}
-                  </td>
-                ))}
+                {grid.monthTotals.map((m, i) => {
+                  const t = targetAt(monthsOfYear[i], i);
+                  return (
+                    <td key={i} style={{ fontWeight: 700 }}>
+                      {view === 'achievement' ? (t ? `${Math.round(100 * m.actual / t)}%` : '—') : fmtRM(view === 'target' ? t : m.actual)}
+                    </td>
+                  );
+                })}
                 <td style={{ color: 'var(--accent)', fontWeight: 700 }}>
                   {view === 'achievement' ? (nrTargetYtd ? `${Math.round(100 * nrYtd / nrTargetYtd)}%` : '—') : fmtRM(view === 'target' ? nrTargetYtd : nrYtd)}
                 </td>
@@ -334,6 +346,22 @@ export default function BusinessPerformance() {
               </div>
             );
           })}
+
+          {/* Weighted pipeline vs the NR gap */}
+          <div style={{ marginTop: 4, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, fontSize: 13 }}>
+              <span style={{ fontWeight: 600 }}>Pipeline uplift (weighted)</span>
+              <span style={{ color: 'var(--muted)' }}>
+                {fmtRM(weightedMonthly)}/mo · ~{fmtRM(weightedMonthly * 12)}/yr
+                {nrGap > 0
+                  ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}> · covers {Math.round(100 * (weightedMonthly * 12) / nrGap)}% of the {fmtRM(nrGap)} NR gap</span>
+                  : (nrAnnualTarget ? <span style={{ color: 'var(--green)', fontWeight: 600 }}> · NR target met</span> : <span style={{ color: 'var(--muted)' }}> · set an NR target</span>)}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+              Weighted = Σ (deal est. revenue × win probability) from the Plans page. Annualized against the remaining gap to the annual NR target.
+            </div>
+          </div>
         </div>
       </Section>
     </div>
