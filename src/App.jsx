@@ -6,6 +6,11 @@ import RevenueShare from './components/RevenueShare';
 import CompanyPerformance from './components/CompanyPerformance';
 import CostAnalysis from './components/CostAnalysis';
 import Invoices from './components/Invoices';
+import BusinessPerformance from './components/business/BusinessPerformance';
+import BusinessPlans from './components/business/BusinessPlans';
+import BusinessRoadmap from './components/business/BusinessRoadmap';
+import BusinessFeedback from './components/business/BusinessFeedback';
+import BusinessPartners from './components/business/BusinessPartners';
 import Login from './components/Login';
 import { useAuth } from './utils/useAuth';
 import './App.css';
@@ -18,9 +23,14 @@ const TABS = [
   { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝', group: 'Modules' },
   { id: 'cost',        label: 'Cost Analysis',          subtitle: 'Monthly Recurring Costs', icon: '🧾', group: 'Billing Matters' },
   { id: 'invoices',    label: 'Invoices',               subtitle: 'Due & Paid Register',     icon: '📁', group: 'Billing Matters' },
+  { id: 'biz-perf',    label: 'Performance',            subtitle: 'BoostLife Consumer',      icon: '📈', group: 'Business Analysis' },
+  { id: 'biz-plans',   label: 'Plans',                  subtitle: 'Pipeline & Deals',        icon: '🧭', group: 'Business Analysis' },
+  { id: 'biz-roadmap', label: 'Roadmap',                subtitle: 'Launches & Definitions',  icon: '🚀', group: 'Business Analysis' },
+  { id: 'biz-feedback',label: 'Feedback',               subtitle: 'Customer Rating',         icon: '⭐', group: 'Business Analysis' },
+  { id: 'biz-partners',label: 'Partners',               subtitle: 'BD Prospects',            icon: '🤝', group: 'Business Analysis' },
 ];
 
-const NAV_GROUPS = ['Modules', 'Billing Matters'];
+const NAV_GROUPS = ['Modules', 'Billing Matters', 'Business Analysis'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('company');
@@ -223,6 +233,11 @@ export default function App() {
           {activeTab === 'company'       && <CompanyPerformance />}
           {activeTab === 'cost'          && <CostAnalysis />}
           {activeTab === 'invoices'      && <Invoices />}
+          {activeTab === 'biz-perf'      && <BusinessPerformance />}
+          {activeTab === 'biz-plans'     && <BusinessPlans />}
+          {activeTab === 'biz-roadmap'   && <BusinessRoadmap />}
+          {activeTab === 'biz-feedback'  && <BusinessFeedback />}
+          {activeTab === 'biz-partners'  && <BusinessPartners />}
         </div>
       </main>
     </div>
