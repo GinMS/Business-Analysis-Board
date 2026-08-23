@@ -16,11 +16,11 @@ import { useAuth } from './utils/useAuth';
 import './App.css';
 
 const TABS = [
-  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊', group: 'Modules' },
-  { id: 'wallet',      label: 'Wallet Forecast',       subtitle: 'Business Case — Monthly', icon: '💳', group: 'Modules' },
-  { id: 'loan',        label: 'Loan Forecast',          subtitle: 'Business Case — Monthly', icon: '🏦', group: 'Modules' },
-  { id: 'unit',        label: 'Unit Calculation',       subtitle: 'Economics Per Unit',      icon: '📐', group: 'Modules' },
-  { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝', group: 'Modules' },
+  { id: 'company',     label: 'Company Performance',    subtitle: 'Overall P&L',             icon: '📊', group: 'Forecasting and Gap Analysis' },
+  { id: 'wallet',      label: 'Wallet Forecast',       subtitle: 'Business Case — Monthly', icon: '💳', group: 'Forecasting and Gap Analysis' },
+  { id: 'loan',        label: 'Loan Forecast',          subtitle: 'Business Case — Monthly', icon: '🏦', group: 'Forecasting and Gap Analysis' },
+  { id: 'unit',        label: 'Unit Calculation',       subtitle: 'Economics Per Unit',      icon: '📐', group: 'Forecasting and Gap Analysis' },
+  { id: 'revenue-share', label: 'Revenue Share',        subtitle: 'Partner Split Analysis',  icon: '🤝', group: 'Forecasting and Gap Analysis' },
   { id: 'cost',        label: 'Cost Analysis',          subtitle: 'Monthly Recurring Costs', icon: '🧾', group: 'Billing Matters' },
   { id: 'invoices',    label: 'Invoices',               subtitle: 'Due & Paid Register',     icon: '📁', group: 'Billing Matters' },
   { id: 'biz-perf',    label: 'Performance',            subtitle: 'BoostLife Consumer',      icon: '📈', group: 'Business Analysis' },
@@ -30,7 +30,7 @@ const TABS = [
   { id: 'biz-partners',label: 'Partners',               subtitle: 'BD Prospects',            icon: '🤝', group: 'Business Analysis' },
 ];
 
-const NAV_GROUPS = ['Modules', 'Billing Matters', 'Business Analysis'];
+const NAV_GROUPS = ['Forecasting and Gap Analysis', 'Business Analysis', 'Billing Matters'];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('company');
