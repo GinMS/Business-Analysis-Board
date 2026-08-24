@@ -14,9 +14,21 @@ const PROJECT_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#e11d48', '#8b5cf6', '
 // Interest can be charged two ways:
 //  • reducing — interest on the outstanding balance each month (a true APR)
 //  • flat     — interest on the ORIGINAL principal for the whole tenure
+// Malaysia's Suruhanjaya Kredit Pengguna (SKP) standards require interest to be
+// charged on a REDUCING BALANCE basis for consumer credit / BNPL, and prohibit a
+// flat rate combined with the Rule of 78. Flat rate is kept here for comparison
+// modelling only and is clearly flagged as not permissible.
 const INTEREST_METHODS = {
-  reducing: { label: 'Reducing Balance', hint: 'Interest accrues on the outstanding balance, so it falls as the loan amortises. The quoted rate is a true APR.' },
-  flat:     { label: 'Fixed (Flat) Rate', hint: 'Interest is charged on the original principal for the full tenure, so each loan pays the same interest every month.' },
+  reducing: {
+    label: 'Reducing Balance (SKP-compliant)',
+    compliant: true,
+    hint: 'Interest is charged only on the outstanding principal remaining after prior repayments — the basis required by SKP for consumer credit and BNPL.',
+  },
+  flat: {
+    label: 'Fixed (Flat) Rate — comparison only',
+    compliant: false,
+    hint: 'Interest is charged on the original disbursed principal for the entire tenure, so the borrower keeps paying on principal already repaid.',
+  },
 };
 
 // Monthly IRR of an equal-installment loan, solved by bisection: the rate that
@@ -51,6 +63,9 @@ const loanCostRates = ({ rate, term, method, feePct = 0 }) => {
     monthly: i * 100,
     nominalApr: i * 12 * 100,
     eir: (Math.pow(1 + i, 12) - 1) * 100,
+    installmentPerUnit: installment,          // installment per 1.00 of principal
+    totalPayablePerUnit: installment * n,     // total repaid per 1.00 of principal
+    financeChargePerUnit: installment * n - P + (P - net), // interest + upfront fee
   };
 };
 
@@ -225,6 +240,14 @@ export default function LoanForecast() {
           { label: 'Peak Loan Book', value: fmt(totals.peakPortfolio), color: 'var(--amber)' },
           { label: 'Avg NIM', value: fmtPct(totals.avgNim), color: 'var(--green)' },
           { label: 'Total Credit Loss', value: fmt(totals.nplTotal), color: 'var(--red)' },
+          {
+            label: 'Disclosed EIR (p.a.)',
+            value: fmtPct(loanCostRates({
+              rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths,
+              method: inputs.interestMethod || 'reducing', feePct: inputs.originationFeePct,
+            }).eir),
+            color: INTEREST_METHODS[inputs.interestMethod || 'reducing'].compliant ? 'var(--accent)' : 'var(--red)',
+          },
         ].map(card => (
           <div key={card.label} className="card">
             <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{card.label}</div>
@@ -261,35 +284,112 @@ export default function LoanForecast() {
         </div>
         {(() => {
           const method = inputs.interestMethod || 'reducing';
-          const noFee = loanCostRates({ rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths, method });
-          const withFee = loanCostRates({ rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths, method, feePct: inputs.originationFeePct });
+          const compliant = INTEREST_METHODS[method].compliant;
+          const args = { rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths, feePct: inputs.originationFeePct };
+          const noFee = loanCostRates({ ...args, feePct: 0, method });
+          const withFee = loanCostRates({ ...args, method });
+          const red = loanCostRates({ ...args, method: 'reducing' });
+          const flat = loanCostRates({ ...args, method: 'flat' });
+          const P = inputs.avgLoanSize || 0;
           return (
-            <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 11, color: 'var(--muted)' }}>
-              <div>
-                <strong style={{ color: 'var(--text)' }}>{INTEREST_METHODS[method].label}:</strong> {INTEREST_METHODS[method].hint}
+            <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* Prominent EIR disclosure — SKP requires this regardless of nominal rate type */}
+              <div style={{ padding: '14px 16px', background: 'var(--surface2)', borderRadius: 8, border: `1px solid ${compliant ? 'var(--border)' : 'var(--red)'}` }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+                    Effective Interest Rate (EIR)
+                  </span>
+                  <span style={{ fontSize: 24, fontWeight: 800, color: compliant ? 'var(--accent)' : 'var(--red)' }}>{fmtPct(withFee.eir)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                    p.a. — actual annualised finance cost, including the {fmtPct(inputs.originationFeePct)} upfront fee
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, fontSize: 11, color: 'var(--muted)' }}>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nominal (quoted)</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{fmtPct(inputs.annualInterestRate)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>EIR — interest only</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--amber)' }}>{fmtPct(noFee.eir)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Monthly instalment</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{fmt(withFee.installmentPerUnit * P, 0)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total payable</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{fmt(withFee.totalPayablePerUnit * P, 0)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Total finance charge</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--red)' }}>{fmt(withFee.financeChargePerUnit * P, 0)}</div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 11, color: 'var(--muted)' }}>
+                  EIR is the monthly IRR of the actual cash flows compounded 12× — <em>(1 + i)<sup>12</sup> − 1</em> — on a{' '}
+                  {fmt(P, 0)} loan over {inputs.avgLoanTermMonths} months. Interest is accrued on the monthly balance
+                  (actuarial basis); <strong>the Rule of 78 is not used</strong> anywhere in this model.
+                  Simple-annualised APR (i × 12) would read {fmtPct(withFee.nominalApr)}.
+                </div>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 10 }}>
-                <div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nominal (quoted)</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{fmtPct(inputs.annualInterestRate)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>EIR — interest only</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{fmtPct(noFee.eir)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>EIR — incl. {fmtPct(inputs.originationFeePct)} fee</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--red)' }}>{fmtPct(withFee.eir)}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>APR (for comparison)</div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{fmtPct(withFee.nominalApr)}</div>
-                </div>
+
+              {/* Method status */}
+              <div style={{
+                padding: '10px 14px', borderRadius: 8, fontSize: 11,
+                background: compliant ? 'var(--surface2)' : 'rgba(220,38,38,0.08)',
+                border: `1px solid ${compliant ? 'var(--border)' : 'var(--red)'}`,
+                color: 'var(--muted)',
+              }}>
+                <strong style={{ color: compliant ? 'var(--green)' : 'var(--red)' }}>
+                  {compliant ? '✓ Permissible basis' : '⚠ Not permissible for consumer credit / BNPL'}
+                </strong>{' '}
+                — <strong style={{ color: 'var(--text)' }}>{INTEREST_METHODS[method].label}.</strong> {INTEREST_METHODS[method].hint}
+                {!compliant && (
+                  <span>
+                    {' '}Under Malaysia&apos;s <strong>SKP</strong> standards, interest/profit must be charged on a{' '}
+                    <strong>reducing balance</strong> basis, and a flat rate combined with the <strong>Rule of 78</strong> is prohibited.
+                    Use this setting for comparison modelling only — switch to Reducing Balance for a product you intend to offer.
+                  </span>
+                )}
               </div>
-              <div style={{ marginTop: 8 }}>
-                <strong>EIR</strong> is the monthly IRR of the actual cash flows compounded 12× — <em>(1 + i)<sup>12</sup> − 1</em> — and includes the
-                upfront fee, which reduces the cash the borrower receives. <strong>APR</strong> annualises the same monthly rate by simple
-                multiplication (i × 12), so it is always the lower figure. Monthly rate here is {noFee.monthly.toFixed(3)}%.
+
+              {/* Comparability: same nominal rate under both bases */}
+              <div style={{ padding: '10px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 11, color: 'var(--muted)' }}>
+                <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>
+                  Same {fmtPct(inputs.annualInterestRate)} nominal rate, {inputs.avgLoanTermMonths} months, {fmt(P, 0)} loan
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table className="data-table" style={{ fontSize: 11 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left' }}>Basis</th>
+                        <th>Disclosed EIR</th>
+                        <th>Monthly instalment</th>
+                        <th>Total finance charge</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td style={{ textAlign: 'left', color: 'var(--green)', fontWeight: 600 }}>Reducing balance (required)</td>
+                        <td style={{ fontWeight: 700 }}>{fmtPct(red.eir)}</td>
+                        <td>{fmt(red.installmentPerUnit * P, 0)}</td>
+                        <td>{fmt(red.financeChargePerUnit * P, 0)}</td>
+                      </tr>
+                      <tr>
+                        <td style={{ textAlign: 'left', color: 'var(--red)', fontWeight: 600 }}>Flat rate (not permitted)</td>
+                        <td style={{ fontWeight: 700, color: 'var(--red)' }}>{fmtPct(flat.eir)}</td>
+                        <td>{fmt(flat.installmentPerUnit * P, 0)}</td>
+                        <td style={{ color: 'var(--red)' }}>{fmt(flat.financeChargePerUnit * P, 0)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  The same headline rate costs the borrower{' '}
+                  <strong style={{ color: 'var(--red)' }}>{fmt((flat.financeChargePerUnit - red.financeChargePerUnit) * P, 0)} more</strong>{' '}
+                  on a flat basis — a disclosed EIR of {fmtPct(flat.eir)} vs {fmtPct(red.eir)}. This is why SKP mandates the reducing-balance basis.
+                </div>
               </div>
             </div>
           );
