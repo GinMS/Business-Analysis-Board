@@ -143,9 +143,14 @@ function PerformanceBoard({
 
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
 
+  // Template carries both an Actual and a Target row per stream.
   const downloadCsvTemplate = () => {
-    const headers = ['Stream', ...MONTHS];
-    const rows = (streams.length ? streams.map(s => [s.label, ...MONTHS.map(() => 0)]) : [['Example Stream', ...MONTHS.map(() => 0)]]);
+    const headers = ['Stream', 'Metric', ...MONTHS];
+    const base = streams.length ? streams.map(s => s.label) : ['Example Stream'];
+    const rows = base.flatMap(label => [
+      [label, 'Actual', ...MONTHS.map(() => 0)],
+      [label, 'Target', ...MONTHS.map(() => 0)],
+    ]);
     exportCSV(`${slug}-${activeYear}-template`, headers, rows);
   };
 
@@ -159,45 +164,56 @@ function PerformanceBoard({
         const header = rows[0].map(h => String(h).trim().toLowerCase());
         const monthCol = MONTHS.map((m, i) => header.findIndex(h =>
           h === m.toLowerCase() || h.startsWith(m.toLowerCase()) || h === `${activeYear}-${String(i + 1).padStart(2, '0')}`));
-        if (monthCol.every(c => c < 0)) { setCsvStatus({ kind: 'error', text: 'No month columns found. Use the template: Stream, Jan, Feb, … Dec.' }); return; }
+        if (monthCol.every(c => c < 0)) { setCsvStatus({ kind: 'error', text: 'No month columns found. Use the template: Stream, Metric, Jan, Feb, … Dec.' }); return; }
+        // Optional "Metric" column selects Actual vs Target; absent = Actual,
+        // so CSVs written before targets were supported still import correctly.
+        const metricCol = header.findIndex(h => h === 'metric' || h === 'type');
 
         const nextStreams = [...streams];
         const nextManual = { ...manual };
-        let added = 0, updated = 0;
+        const nextTargets = { ...streamTargets };
+        const seen = new Set();
+        let added = 0, actualRows = 0, targetRows = 0;
         for (let r = 1; r < rows.length; r++) {
           const label = String(rows[r][0] ?? '').trim();
           if (!label || /^total$/i.test(label)) continue;
+          const metric = metricCol >= 0 ? String(rows[r][metricCol] ?? '').trim().toLowerCase() : '';
+          const isTarget = metric.startsWith('target') || metric.startsWith('budget') || metric === 't';
           let s = nextStreams.find(x => x.label.trim().toLowerCase() === label.toLowerCase());
           if (!s) {
             s = { key: `s${Date.now().toString(36)}${r}`, label, color: STREAM_COLORS[nextStreams.length % STREAM_COLORS.length] };
             nextStreams.push(s); added++;
-          } else updated++;
-          const series = { ...(nextManual[s.key] || {}) };
+          }
+          seen.add(s.key);
+          const bucket = isTarget ? nextTargets : nextManual;
+          const series = { ...(bucket[s.key] || {}) };
           monthCol.forEach((ci, i) => {
             if (ci < 0) return;
             const v = parseAmount(rows[r][ci]);
             if (v != null) series[monthsOfYear[i]] = v;
           });
-          nextManual[s.key] = series;
+          bucket[s.key] = series;
+          if (isTarget) targetRows++; else actualRows++;
         }
         setStreams(nextStreams);
         setManual(nextManual);
-        setCsvStatus({ kind: 'ok', text: `Imported ${file.name} — ${added} new stream(s), ${updated} updated for ${activeYear}.` });
+        setStreamTargets(nextTargets);
+        const parts = [`${added} new stream(s)`, `${seen.size} stream(s) touched`];
+        if (targetRows) parts.push(`${actualRows} actual + ${targetRows} target row(s)`);
+        setCsvStatus({ kind: 'ok', text: `Imported ${file.name} — ${parts.join(', ')} for ${activeYear}.` });
       } catch { setCsvStatus({ kind: 'error', text: 'Could not read that CSV.' }); }
       finally { e.target.value = ''; }
     };
     reader.readAsText(file);
   };
 
+  // Exported in the same Stream/Metric shape the importer reads, so a file can
+  // be exported, edited in Excel and imported straight back.
   const exportGrid = (type) => {
-    const headers = ['Stream', ...MONTHS.map(m => `${m} (A)`), ...MONTHS.map(m => `${m} (T)`), 'FY Actual', 'FY Target', 'Achievement %'];
-    const rows = streams.map(s => [
-      s.label,
-      ...monthsOfYear.map(ym => Math.round(manual[s.key]?.[ym] || 0)),
-      ...monthsOfYear.map(ym => Math.round(streamTargets[s.key]?.[ym] || 0)),
-      Math.round(totals.perStreamFY[s.key].actual),
-      Math.round(totals.perStreamFY[s.key].target),
-      totals.perStreamFY[s.key].target ? Math.round(100 * totals.perStreamFY[s.key].actual / totals.perStreamFY[s.key].target) : 0,
+    const headers = ['Stream', 'Metric', ...MONTHS, 'FY'];
+    const rows = streams.flatMap(s => [
+      [s.label, 'Actual', ...monthsOfYear.map(ym => Math.round(manual[s.key]?.[ym] || 0)), Math.round(totals.perStreamFY[s.key].actual)],
+      [s.label, 'Target', ...monthsOfYear.map(ym => Math.round(streamTargets[s.key]?.[ym] || 0)), Math.round(totals.perStreamFY[s.key].target)],
     ]);
     (type === 'csv' ? exportCSV : exportExcel)(`${slug}-${activeYear}`, headers, rows);
   };
@@ -440,8 +456,12 @@ export default function BusinessPerformance() {
             )}
           </div>
         </div>
-        <div style={{ flex: 1, minWidth: 200, fontSize: 11, color: 'var(--muted)' }}>
+        <div style={{ flex: 1, minWidth: 220, fontSize: 11, color: 'var(--muted)' }}>
           All boards below show <strong>{activeYear}</strong>. Years with data are listed automatically — switch to view or edit another year.
+          <div style={{ marginTop: 4 }}>
+            CSV per board: <code>Stream, Metric, Jan … Dec</code> where <strong>Metric</strong> is <strong>Actual</strong> or <strong>Target</strong>
+            (omit it and rows are treated as Actual). Click <strong>↓ Template</strong> on a board for a ready-made file.
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn-sm btn-export" onClick={exportJson}>↓ Export JSON</button>
