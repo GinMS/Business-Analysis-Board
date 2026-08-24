@@ -4,7 +4,6 @@ import {
 } from 'recharts';
 import { exportCSV, exportExcel } from '../../utils/exportData';
 import { useLocalStorage } from '../../utils/useLocalStorage';
-import { parseAdeWorkbook, monthLabel, yearsIn, DEFAULT_STREAMS } from '../../utils/adeImport';
 import { seedFromPerformanceWorkbook } from '../../utils/perfImport';
 import Section from '../Section';
 
@@ -20,33 +19,51 @@ const fmtVal = (kind, n) => kind === 'money' ? fmtRM(n) : kind === 'ratio' ? fmt
 
 const KPIS = [
   { key: 'nr',       label: 'Net Revenue (YTD)', kind: 'money' },
-  { key: 'mtu',      label: 'MTU',               kind: 'num' },
-  { key: 'ebUsers',  label: 'EB Users',          kind: 'num' },
+  { key: 'mtu',      label: 'MTU',               kind: 'num',   manual: true },
+  { key: 'ebUsers',  label: 'EB Users',          kind: 'num',   manual: true },
   { key: 'loanBook', label: 'Loan Book',         kind: 'money', manual: true },
   { key: 'cost',     label: 'Cost Ratio',        kind: 'ratio', manual: true, lowerBetter: true },
 ];
 
-const emptyActuals = { importedAt: null, sourceName: '', months: [], streams: {}, kpis: {} };
+// Colour palette assigned to streams as they're added.
+const STREAM_COLORS = ['#3b7ff5', '#16a34a', '#8b5cf6', '#d97706', '#e11d48', '#0891b2', '#14b8a6', '#6c4de6', '#0ea5e9', '#22c55e'];
 
 export default function BusinessPerformance() {
-  const [actuals, setActuals] = useLocalStorage('ba-biz-actuals', emptyActuals);
-  const [manual, setManual] = useLocalStorage('ba-biz-manual', {});          // manual stream actuals
+  const [manual, setManual] = useLocalStorage('ba-biz-manual', {});          // stream actuals (all manual)
   const [targets, setTargets] = useLocalStorage('ba-biz-targets', { streams: {}, annual: {} });
-  const [kpiManual, setKpiManual] = useLocalStorage('ba-biz-kpi', {});       // manual KPI actuals (loanBook, cost)
+  const [kpiManual, setKpiManual] = useLocalStorage('ba-biz-kpi', {});       // KPI actuals (all manual)
   const [plans] = useLocalStorage('ba-biz-plans', []);                       // pipeline deals (weighted vs gap)
-  const [streams] = useLocalStorage('ba-biz-streams', DEFAULT_STREAMS);
+  const [streams, setStreams] = useLocalStorage('ba-biz-streams', []);       // no defaults — user adds their own
   const [view, setView] = useLocalStorage('ba-biz-view', 'actual');         // actual | target | achievement
-  const years = yearsIn(actuals);
   const [year, setYear] = useLocalStorage('ba-biz-year', String(new Date().getFullYear()));
-  const activeYear = years.includes(year) ? year : (years[years.length - 1] || year);
-  const adeRef = useRef();
+  const activeYear = year;
+  const years = useMemo(() => {
+    const now = new Date().getFullYear();
+    const set = new Set([String(now - 1), String(now), String(now + 1), String(year)]);
+    return [...set].sort();
+  }, [year]);
+  const csvRef = useRef();
   const perfRef = useRef();
   const jsonRef = useRef();
 
   const monthsOfYear = MONTHS.map((_, i) => `${activeYear}-${String(i + 1).padStart(2, '0')}`);
 
-  const streamActual = (s, ym) => (s.source === 'manual' ? manual[s.key]?.[ym] : actuals.streams?.[s.key]?.[ym]) || 0;
+  const streamActual = (s, ym) => manual[s.key]?.[ym] || 0;
   const streamTarget = (key, ym) => targets.streams?.[key]?.[ym] || 0;
+
+  // ── Stream CRUD (all user-defined) ─────────────────────────────────────────
+  const addStream = () => {
+    const key = `s${Date.now().toString(36)}`;
+    setStreams(prev => [...prev, { key, label: `Stream ${prev.length + 1}`, source: 'manual', color: STREAM_COLORS[prev.length % STREAM_COLORS.length] }]);
+  };
+  const renameStream = (key, label) => setStreams(prev => prev.map(s => s.key === key ? { ...s, label } : s));
+  const recolorStream = (key, color) => setStreams(prev => prev.map(s => s.key === key ? { ...s, color } : s));
+  const removeStream = (key) => {
+    if (!window.confirm('Remove this stream and its figures?')) return;
+    setStreams(prev => prev.filter(s => s.key !== key));
+    setManual(prev => { const n = { ...prev }; delete n[key]; return n; });
+    setTargets(prev => { const st = { ...(prev.streams || {}) }; delete st[key]; return { ...prev, streams: st }; });
+  };
 
   const setManualCell = (key, ym, val) =>
     setManual(prev => ({ ...prev, [key]: { ...(prev[key] || {}), [ym]: Number(val) || 0 } }));
@@ -69,7 +86,7 @@ export default function BusinessPerformance() {
       perStreamFY[s.key] = { actual: fyA, target: fyT };
     });
     return { perStreamFY, monthTotals };
-  }, [streams, actuals, manual, targets, activeYear]);
+  }, [streams, manual, targets, activeYear]);
 
   // Monthly total NR target: prefer the workbook's total-NR curve, else sum of per-stream targets.
   const targetAt = (ym, i) => targets.monthlyNrTotal?.[ym] ?? grid.monthTotals[i].target;
@@ -82,17 +99,8 @@ export default function BusinessPerformance() {
   const nrAnnualTarget = targets.annual?.nr || 0;
   const nrGap = Math.max(0, nrAnnualTarget - nrYtd);
 
-  const latestKpi = (metric) => {
-    const series = actuals.kpis?.[metric] || {};
-    const inYear = monthsOfYear.filter(ym => series[ym] != null);
-    if (inYear.length) return series[inYear[inYear.length - 1]];
-    return 0;
-  };
-  const kpiActual = (k) => {
-    if (k.key === 'nr') return nrYtd;
-    if (k.manual) return kpiManual[k.key] || 0;
-    return latestKpi(k.key);
-  };
+  // NR is derived from the stream grid; every other KPI is typed in.
+  const kpiActual = (k) => (k.key === 'nr' ? nrYtd : (kpiManual[k.key] || 0));
 
   const chartData = useMemo(() => monthsOfYear.map((ym, i) => {
     const row = { label: MONTHS[i], Target: targetAt(ym, i) };
@@ -100,21 +108,72 @@ export default function BusinessPerformance() {
     return row;
   }), [monthsOfYear, streams, grid]);
 
-  // ── Data source: import / export ───────────────────────────────────────────
-  const importAde = (e) => {
+  // ── Data source: CSV import / template / export ────────────────────────────
+  // CSV layout: first column = stream name, then one column per month (Jan…Dec).
+  const downloadCsvTemplate = () => {
+    const headers = ['Stream', ...MONTHS];
+    const rows = (streams.length ? streams.map(s => [s.label, ...MONTHS.map(() => 0)]) : [['Example Stream', ...MONTHS.map(() => 0)]]);
+    exportCSV(`stream-actuals-${activeYear}-template`, headers, rows);
+  };
+
+  const parseCsv = (text) => {
+    // Minimal CSV parser that honours quoted fields.
+    const rows = []; let row = [], cur = '', q = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (q) {
+        if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+        else if (c === '"') q = false;
+        else cur += c;
+      } else if (c === '"') q = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r') cur += c;
+    }
+    if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(r => r.some(c => String(c).trim() !== ''));
+  };
+
+  const importCsv = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const parsed = parseAdeWorkbook(ev.target.result, file.name);
-        if (!parsed.months.length) { alert('No recognizable monthly data found in that ADE file.'); return; }
-        setActuals(parsed);
-        const ys = [...new Set(parsed.months.map(m => m.slice(0, 4)))];
-        if (ys.length) setYear(ys[ys.length - 1]);
-      } catch { alert('Could not read that ADE workbook.'); }
+        const rows = parseCsv(String(ev.target.result));
+        if (rows.length < 2) { alert('That CSV has no data rows.'); return; }
+        const header = rows[0].map(h => String(h).trim().toLowerCase());
+        // Map each month to its column index (accepts "Jan", "January", "2025-01").
+        const monthCol = MONTHS.map((m, i) => header.findIndex(h =>
+          h === m.toLowerCase() || h.startsWith(m.toLowerCase()) || h === `${activeYear}-${String(i + 1).padStart(2, '0')}`));
+        if (monthCol.every(c => c < 0)) { alert('No month columns found. Use the template: Stream, Jan, Feb, … Dec.'); return; }
+
+        const nextStreams = [...streams];
+        const nextManual = { ...manual };
+        let added = 0, updated = 0;
+        for (let r = 1; r < rows.length; r++) {
+          const label = String(rows[r][0] ?? '').trim();
+          if (!label) continue;
+          let s = nextStreams.find(x => x.label.trim().toLowerCase() === label.toLowerCase());
+          if (!s) {
+            s = { key: `s${Date.now().toString(36)}${r}`, label, source: 'manual', color: STREAM_COLORS[nextStreams.length % STREAM_COLORS.length] };
+            nextStreams.push(s); added++;
+          } else updated++;
+          const series = { ...(nextManual[s.key] || {}) };
+          monthCol.forEach((ci, i) => {
+            if (ci < 0) return;
+            const raw = String(rows[r][ci] ?? '').replace(/[, ]/g, '').replace(/^rm/i, '');
+            const v = Number(raw);
+            if (raw !== '' && isFinite(v)) series[monthsOfYear[i]] = v;
+          });
+          nextManual[s.key] = series;
+        }
+        setStreams(nextStreams);
+        setManual(nextManual);
+        alert(`Imported ${activeYear} actuals — ${added} new stream(s), ${updated} updated.`);
+      } catch { alert('Could not read that CSV.'); }
       finally { e.target.value = ''; }
     };
-    reader.readAsArrayBuffer(file);
+    reader.readAsText(file);
   };
 
   const seedPerf = (e) => {
@@ -181,11 +240,8 @@ export default function BusinessPerformance() {
       const pct = t ? (a / t) * 100 : 0;
       return <span style={{ color: pct >= 100 ? 'var(--green)' : pct >= 80 ? 'var(--amber)' : 'var(--red)', fontWeight: 600 }}>{t ? `${pct.toFixed(0)}%` : '—'}</span>;
     }
-    // actual view
-    if (s.source === 'manual') {
-      return <input className="cell-input" type="number" value={manual[s.key]?.[ym] || ''} placeholder="0" onChange={e => setManualCell(s.key, ym, e.target.value)} />;
-    }
-    return <span>{a ? fmtRM(a) : '—'}</span>;
+    // actual view — every stream is user-entered
+    return <input className="cell-input" type="number" value={manual[s.key]?.[ym] || ''} placeholder="0" onChange={e => setManualCell(s.key, ym, e.target.value)} />;
   };
 
   const elapsed = grid.monthTotals.filter(m => m.actual > 0).length || 0;
@@ -223,34 +279,32 @@ export default function BusinessPerformance() {
       {/* Data source */}
       <Section title="Data Source" right={(
         <>
-          <button className="btn-sm btn-primary" onClick={() => adeRef.current?.click()}>↑ Import ADE .xlsx</button>
+          <button className="btn-sm btn-primary" onClick={() => csvRef.current?.click()}>↑ Import CSV</button>
+          <button className="btn-sm btn-export" onClick={downloadCsvTemplate}>↓ CSV Template</button>
           <button className="btn-sm btn-export" onClick={exportJson}>↓ Export JSON</button>
           <button className="btn-sm btn-export" onClick={() => jsonRef.current?.click()}>↑ Import JSON</button>
           <button className="btn-sm btn-export" onClick={() => perfRef.current?.click()}>Seed from Workbook</button>
-          <input ref={adeRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={importAde} />
+          <input ref={csvRef} type="file" accept=".csv,text/csv" style={{ display: 'none' }} onChange={importCsv} />
           <input ref={perfRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }} onChange={seedPerf} />
           <input ref={jsonRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={importJson} />
         </>
       )}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', fontSize: 13 }}>
           <div>
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>Last imported</div>
-            <div style={{ fontWeight: 600 }}>{actuals.importedAt ? new Date(actuals.importedAt).toLocaleString() : '— not yet imported —'}</div>
-            {actuals.sourceName && <div style={{ color: 'var(--muted)', fontSize: 11 }}>{actuals.sourceName}</div>}
-          </div>
-          <div>
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>Months detected</div>
-            <div style={{ fontWeight: 600 }}>{actuals.months.length ? `${monthLabel(actuals.months[0])} – ${monthLabel(actuals.months[actuals.months.length - 1])}` : '—'}</div>
+            <div style={{ color: 'var(--muted)', fontSize: 12 }}>Streams</div>
+            <div style={{ fontWeight: 600 }}>{streams.length ? `${streams.length} defined` : '— none yet —'}</div>
           </div>
           <div>
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>Fiscal year</div>
             <select className="input" style={{ width: 120 }} value={activeYear} onChange={e => setYear(e.target.value)}>
-              {(years.length ? years : [activeYear]).map(y => <option key={y} value={y}>{y}</option>)}
+              {years.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
         </div>
         <div style={{ marginTop: 12, fontSize: 11, color: 'var(--muted)' }}>
-          Import converts the ADE raw export into this app's local JSON. Actuals for streams not in the raw file (Loyalty, Payflex, Government) are typed in below. Targets are set here and never overwritten by import.
+          Add your own streams below and type the monthly figures, or import them from a CSV.
+          CSV layout: first column <strong>Stream</strong>, then one column per month (<strong>Jan … Dec</strong>) for the selected year —
+          click <strong>↓ CSV Template</strong> for a ready-made file. Importing matches existing streams by name and creates any new ones. Targets are always set here and never overwritten.
         </div>
       </Section>
 
@@ -262,6 +316,7 @@ export default function BusinessPerformance() {
               <button key={v} className={`tab-btn${view === v ? ' active' : ''}`} style={{ padding: '5px 12px', fontSize: 12, textTransform: 'capitalize' }} onClick={() => setView(v)}>{v}</button>
             ))}
           </div>
+          <button className="btn-sm btn-primary" onClick={addStream}>+ Add Stream</button>
           <button className="btn-sm btn-export" onClick={() => exportGrid('csv')}>CSV</button>
           <button className="btn-sm btn-export" onClick={() => exportGrid('excel')}>Excel</button>
         </>
@@ -270,22 +325,39 @@ export default function BusinessPerformance() {
           <table className="data-table">
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', minWidth: 150 }}>Stream</th>
+                <th style={{ textAlign: 'left', minWidth: 180 }}>Stream</th>
                 {MONTHS.map(m => <th key={m} style={{ minWidth: 84 }}>{m}</th>)}
                 <th style={{ color: 'var(--accent)', fontWeight: 700 }}>FY</th>
+                <th />
               </tr>
             </thead>
             <tbody>
+              {streams.length === 0 && (
+                <tr>
+                  <td colSpan={MONTHS.length + 3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 24 }}>
+                    No streams yet — click <strong>+ Add Stream</strong> to create one, or <strong>↑ Import CSV</strong> in Data Source.
+                  </td>
+                </tr>
+              )}
               {streams.map(s => {
                 const fy = grid.perStreamFY[s.key];
                 const fyVal = view === 'target' ? fy.target : view === 'achievement' ? (fy.target ? `${Math.round(100 * fy.actual / fy.target)}%` : '—') : fy.actual;
                 return (
                   <tr key={s.key}>
-                    <td style={{ textAlign: 'left', fontWeight: 600, color: s.color }}>
-                      {s.label}{s.source === 'manual' && <span style={{ color: 'var(--muted)', fontWeight: 400, fontSize: 11 }}> · manual</span>}
+                    <td style={{ padding: '4px 6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <input type="color" value={s.color} onChange={e => recolorStream(s.key, e.target.value)}
+                          title="Stream colour"
+                          style={{ width: 16, height: 16, padding: 0, border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }} />
+                        <input className="cell-input" style={{ textAlign: 'left', fontWeight: 600, color: s.color }}
+                          value={s.label} onChange={e => renameStream(s.key, e.target.value)} />
+                      </div>
                     </td>
                     {monthsOfYear.map(ym => <td key={ym} style={{ padding: '4px 6px' }}>{cell(s, ym)}</td>)}
                     <td style={{ color: s.color, fontWeight: 700 }}>{typeof fyVal === 'number' ? fmtRM(fyVal) : fyVal}</td>
+                    <td style={{ textAlign: 'center' }}>
+                      <button className="btn-sm btn-export" title="Remove stream" onClick={() => removeStream(s.key)}>✕</button>
+                    </td>
                   </tr>
                 );
               })}
@@ -302,6 +374,7 @@ export default function BusinessPerformance() {
                 <td style={{ color: 'var(--accent)', fontWeight: 700 }}>
                   {view === 'achievement' ? (nrTargetYtd ? `${Math.round(100 * nrYtd / nrTargetYtd)}%` : '—') : fmtRM(view === 'target' ? nrTargetYtd : nrYtd)}
                 </td>
+                <td />
               </tr>
             </tbody>
           </table>
