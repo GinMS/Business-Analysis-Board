@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
@@ -8,14 +8,50 @@ import { seedFromPerformanceWorkbook } from '../../utils/perfImport';
 import Section from '../Section';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const fmtRM = (n) =>
-  Math.abs(n) >= 1e6 ? `RM ${(n / 1e6).toFixed(2)}M`
-  : Math.abs(n) >= 1e3 ? `RM ${(n / 1e3).toFixed(0)}K`
-  : `RM ${Math.round(n || 0)}`;
+// Money is always expressed in millions so columns line up and compare at a glance.
+const fmtRM = (n) => {
+  const v = Number(n) || 0;
+  if (v === 0) return 'RM 0.00M';
+  const m = v / 1e6;
+  return `RM ${m.toFixed(Math.abs(m) < 0.1 ? 3 : 2)}M`;
+};
 const fmtNum = (n) => (Math.abs(n) >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : `${Math.round(n || 0)}`);
 const fmtRatio = (n) => `${((n || 0) * 100).toFixed(2)}%`;
 const fmtPct = (n) => `${(n || 0).toFixed(0)}%`;
 const fmtVal = (kind, n) => kind === 'money' ? fmtRM(n) : kind === 'ratio' ? fmtRatio(n) : fmtNum(n);
+
+// "RM 1.20M" / "1,200,000" / "850K" -> number (null when blank/unparseable)
+export const parseAmount = (raw) => {
+  const s = String(raw ?? '').trim().replace(/^rm\s*/i, '').replace(/[, ]/g, '');
+  if (s === '') return null;
+  const m = s.match(/^(-?[\d.]+)\s*([mk])?$/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!isFinite(n)) return null;
+  const suffix = (m[2] || '').toLowerCase();
+  return suffix === 'm' ? n * 1e6 : suffix === 'k' ? n * 1e3 : n;
+};
+
+// Grid cell that reads in millions but edits the exact figure on focus.
+// Typing accepts a plain number, or an explicit 1.2M / 850K suffix.
+function MoneyCell({ value, onChange }) {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState('');
+  const v = Number(value) || 0;
+  return (
+    <input
+      className="cell-input"
+      type="text"
+      inputMode="decimal"
+      placeholder="0.00"
+      title={v ? `RM ${v.toLocaleString('en-MY')}` : 'Shown in millions — click to edit the exact figure'}
+      value={focused ? draft : (v ? (v / 1e6).toFixed(2) : '')}
+      onFocus={() => { setDraft(v ? String(v) : ''); setFocused(true); }}
+      onChange={e => { setDraft(e.target.value); onChange(parseAmount(e.target.value) ?? 0); }}
+      onBlur={() => setFocused(false)}
+    />
+  );
+}
 
 const KPIS = [
   { key: 'nr',       label: 'Net Revenue (YTD)', kind: 'money' },
@@ -43,6 +79,7 @@ export default function BusinessPerformance() {
     return [...set].sort();
   }, [year]);
   const csvRef = useRef();
+  const [csvStatus, setCsvStatus] = useState(null); // inline import feedback (no popups)
   const perfRef = useRef();
   const jsonRef = useRef();
 
@@ -87,6 +124,12 @@ export default function BusinessPerformance() {
     });
     return { perStreamFY, monthTotals };
   }, [streams, manual, targets, activeYear]);
+
+  // Size the Stream column to its longest name (swatch + padding + ~7.2px/char).
+  const streamColWidth = useMemo(() => {
+    const longest = streams.reduce((m, s) => Math.max(m, String(s.label || '').length), 6); // 'Stream'
+    return Math.min(420, Math.max(150, Math.round(longest * 7.2) + 74));
+  }, [streams]);
 
   // Monthly total NR target: prefer the workbook's total-NR curve, else sum of per-stream targets.
   const targetAt = (ym, i) => targets.monthlyNrTotal?.[ym] ?? grid.monthTotals[i].target;
@@ -140,12 +183,12 @@ export default function BusinessPerformance() {
     reader.onload = (ev) => {
       try {
         const rows = parseCsv(String(ev.target.result));
-        if (rows.length < 2) { alert('That CSV has no data rows.'); return; }
+        if (rows.length < 2) { setCsvStatus({ kind: 'error', text: 'That CSV has no data rows.' }); return; }
         const header = rows[0].map(h => String(h).trim().toLowerCase());
         // Map each month to its column index (accepts "Jan", "January", "2025-01").
         const monthCol = MONTHS.map((m, i) => header.findIndex(h =>
           h === m.toLowerCase() || h.startsWith(m.toLowerCase()) || h === `${activeYear}-${String(i + 1).padStart(2, '0')}`));
-        if (monthCol.every(c => c < 0)) { alert('No month columns found. Use the template: Stream, Jan, Feb, … Dec.'); return; }
+        if (monthCol.every(c => c < 0)) { setCsvStatus({ kind: 'error', text: 'No month columns found. Use the template: Stream, Jan, Feb, … Dec.' }); return; }
 
         const nextStreams = [...streams];
         const nextManual = { ...manual };
@@ -161,16 +204,15 @@ export default function BusinessPerformance() {
           const series = { ...(nextManual[s.key] || {}) };
           monthCol.forEach((ci, i) => {
             if (ci < 0) return;
-            const raw = String(rows[r][ci] ?? '').replace(/[, ]/g, '').replace(/^rm/i, '');
-            const v = Number(raw);
-            if (raw !== '' && isFinite(v)) series[monthsOfYear[i]] = v;
+            const v = parseAmount(rows[r][ci]);
+            if (v != null) series[monthsOfYear[i]] = v;
           });
           nextManual[s.key] = series;
         }
         setStreams(nextStreams);
         setManual(nextManual);
-        alert(`Imported ${activeYear} actuals — ${added} new stream(s), ${updated} updated.`);
-      } catch { alert('Could not read that CSV.'); }
+        setCsvStatus({ kind: 'ok', text: `Imported ${file.name} — ${added} new stream(s), ${updated} updated for ${activeYear}.` });
+      } catch { setCsvStatus({ kind: 'error', text: 'Could not read that CSV.' }); }
       finally { e.target.value = ''; }
     };
     reader.readAsText(file);
@@ -234,14 +276,14 @@ export default function BusinessPerformance() {
   const cell = (s, ym) => {
     const a = streamActual(s, ym), t = streamTarget(s.key, ym);
     if (view === 'target') {
-      return <input className="cell-input" type="number" value={t || ''} placeholder="0" onChange={e => setTargetCell(s.key, ym, e.target.value)} />;
+      return <MoneyCell value={t} onChange={v => setTargetCell(s.key, ym, v)} />;
     }
     if (view === 'achievement') {
       const pct = t ? (a / t) * 100 : 0;
       return <span style={{ color: pct >= 100 ? 'var(--green)' : pct >= 80 ? 'var(--amber)' : 'var(--red)', fontWeight: 600 }}>{t ? `${pct.toFixed(0)}%` : '—'}</span>;
     }
     // actual view — every stream is user-entered
-    return <input className="cell-input" type="number" value={manual[s.key]?.[ym] || ''} placeholder="0" onChange={e => setManualCell(s.key, ym, e.target.value)} />;
+    return <MoneyCell value={manual[s.key]?.[ym]} onChange={v => setManualCell(s.key, ym, v)} />;
   };
 
   const elapsed = grid.monthTotals.filter(m => m.actual > 0).length || 0;
@@ -301,6 +343,15 @@ export default function BusinessPerformance() {
             </select>
           </div>
         </div>
+        {csvStatus && (
+          <div style={{
+            marginTop: 12, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600,
+            color: csvStatus.kind === 'ok' ? 'var(--green)' : 'var(--red)',
+            background: 'var(--surface2)',
+          }}>
+            {csvStatus.kind === 'ok' ? '✓ ' : '⚠ '}{csvStatus.text}
+          </div>
+        )}
         <div style={{ marginTop: 12, fontSize: 11, color: 'var(--muted)' }}>
           Add your own streams below and type the monthly figures, or import them from a CSV.
           CSV layout: first column <strong>Stream</strong>, then one column per month (<strong>Jan … Dec</strong>) for the selected year —
@@ -325,7 +376,9 @@ export default function BusinessPerformance() {
           <table className="data-table">
             <thead>
               <tr>
-                <th style={{ textAlign: 'left', minWidth: 180 }}>Stream</th>
+                <th style={{ textAlign: 'left', width: streamColWidth, minWidth: streamColWidth, whiteSpace: 'nowrap' }}>
+                  Stream <span style={{ color: 'var(--muted)', fontWeight: 400, textTransform: 'none' }}>(RM mil)</span>
+                </th>
                 {MONTHS.map(m => <th key={m} style={{ minWidth: 84 }}>{m}</th>)}
                 <th style={{ color: 'var(--accent)', fontWeight: 700 }}>FY</th>
                 <th />
@@ -349,7 +402,7 @@ export default function BusinessPerformance() {
                         <input type="color" value={s.color} onChange={e => recolorStream(s.key, e.target.value)}
                           title="Stream colour"
                           style={{ width: 16, height: 16, padding: 0, border: 'none', background: 'none', cursor: 'pointer', flexShrink: 0 }} />
-                        <input className="cell-input" style={{ textAlign: 'left', fontWeight: 600, color: s.color }}
+                        <input className="cell-input" style={{ textAlign: 'left', fontWeight: 600, color: s.color, width: '100%', minWidth: 0 }}
                           value={s.label} onChange={e => renameStream(s.key, e.target.value)} />
                       </div>
                     </td>
