@@ -19,8 +19,40 @@ const INTEREST_METHODS = {
   flat:     { label: 'Fixed (Flat) Rate', hint: 'Interest is charged on the original principal for the full tenure, so each loan pays the same interest every month.' },
 };
 
-// A flat rate of r over N installments costs roughly this as a true APR.
-const flatToEffectiveApr = (rate, term) => (term > 1 ? (rate * 2 * term) / (term + 1) : rate);
+// Monthly IRR of an equal-installment loan, solved by bisection: the rate that
+// discounts the installments back to the amount actually received.
+const monthlyIrr = (principal, installment, n) => {
+  if (!(principal > 0) || !(installment > 0) || n < 1) return 0;
+  if (installment * n <= principal) return 0;
+  let lo = 0, hi = 1; // 0%..100% per month brackets any realistic loan
+  for (let k = 0; k < 200; k++) {
+    const mid = (lo + hi) / 2;
+    const pv = mid === 0 ? installment * n : installment * (1 - Math.pow(1 + mid, -n)) / mid;
+    if (pv > principal) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+};
+
+// True cost of a loan, derived from its actual cash flows.
+//   nominalApr — periodic IRR x 12 (simple annualisation, US-style APR)
+//   eir        — periodic IRR compounded 12x (effective interest rate)
+// An upfront origination fee reduces the net cash the borrower receives, which
+// raises both figures (this is the IFRS 9 / MFRS 9 treatment of integral fees).
+const loanCostRates = ({ rate, term, method, feePct = 0 }) => {
+  const r = (rate || 0) / 100;
+  const n = Math.max(1, Math.round(term || 1));
+  const P = 1;
+  const net = P * (1 - (feePct || 0) / 100); // cash actually received
+  const installment = method === 'flat'
+    ? (P + P * r * (n / 12)) / n                       // principal + flat interest, spread evenly
+    : (r / 12) === 0 ? P / n : P * (r / 12) / (1 - Math.pow(1 + r / 12, -n)); // standard EMI
+  const i = monthlyIrr(net, installment, n);
+  return {
+    monthly: i * 100,
+    nominalApr: i * 12 * 100,
+    eir: (Math.pow(1 + i, 12) - 1) * 100,
+  };
+};
 
 const defaultInputs = {
   startMonth: 0,
@@ -227,17 +259,41 @@ export default function LoanForecast() {
           <InputField label="Base Operating Cost ($)" value={inputs.operatingCostBase} onChange={v => set('operatingCostBase', v)} />
           <InputField label="Cost per Loan Disbursed ($)" value={inputs.operatingCostPerLoan} onChange={v => set('operatingCostPerLoan', v)} step={1} />
         </div>
-        <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 11, color: 'var(--muted)' }}>
-          <strong style={{ color: 'var(--text)' }}>{INTEREST_METHODS[inputs.interestMethod || 'reducing'].label}:</strong>{' '}
-          {INTEREST_METHODS[inputs.interestMethod || 'reducing'].hint}
-          {(inputs.interestMethod || 'reducing') === 'flat' && (
-            <span>
-              {' '}A flat <strong>{fmtPct(inputs.annualInterestRate)}</strong> over {inputs.avgLoanTermMonths} months is roughly{' '}
-              <strong style={{ color: 'var(--amber)' }}>{fmtPct(flatToEffectiveApr(inputs.annualInterestRate, inputs.avgLoanTermMonths))} APR</strong>{' '}
-              on a reducing-balance basis, because the borrower keeps paying on principal they have already repaid.
-            </span>
-          )}
-        </div>
+        {(() => {
+          const method = inputs.interestMethod || 'reducing';
+          const noFee = loanCostRates({ rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths, method });
+          const withFee = loanCostRates({ rate: inputs.annualInterestRate, term: inputs.avgLoanTermMonths, method, feePct: inputs.originationFeePct });
+          return (
+            <div style={{ marginTop: 14, padding: '12px 14px', background: 'var(--surface2)', borderRadius: 8, fontSize: 11, color: 'var(--muted)' }}>
+              <div>
+                <strong style={{ color: 'var(--text)' }}>{INTEREST_METHODS[method].label}:</strong> {INTEREST_METHODS[method].hint}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 18, marginTop: 10 }}>
+                <div>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Nominal (quoted)</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{fmtPct(inputs.annualInterestRate)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>EIR — interest only</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--amber)' }}>{fmtPct(noFee.eir)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>EIR — incl. {fmtPct(inputs.originationFeePct)} fee</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--red)' }}>{fmtPct(withFee.eir)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em' }}>APR (for comparison)</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{fmtPct(withFee.nominalApr)}</div>
+                </div>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <strong>EIR</strong> is the monthly IRR of the actual cash flows compounded 12× — <em>(1 + i)<sup>12</sup> − 1</em> — and includes the
+                upfront fee, which reduces the cash the borrower receives. <strong>APR</strong> annualises the same monthly rate by simple
+                multiplication (i × 12), so it is always the lower figure. Monthly rate here is {noFee.monthly.toFixed(3)}%.
+              </div>
+            </div>
+          );
+        })()}
       </Section>
 
       {/* Charts */}
