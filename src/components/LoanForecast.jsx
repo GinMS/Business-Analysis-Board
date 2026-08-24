@@ -11,6 +11,17 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 
 const PROJECT_COLORS = ['#0ea5e9', '#f59e0b', '#10b981', '#e11d48', '#8b5cf6', '#14b8a6'];
 
+// Interest can be charged two ways:
+//  • reducing — interest on the outstanding balance each month (a true APR)
+//  • flat     — interest on the ORIGINAL principal for the whole tenure
+const INTEREST_METHODS = {
+  reducing: { label: 'Reducing Balance', hint: 'Interest accrues on the outstanding balance, so it falls as the loan amortises. The quoted rate is a true APR.' },
+  flat:     { label: 'Fixed (Flat) Rate', hint: 'Interest is charged on the original principal for the full tenure, so each loan pays the same interest every month.' },
+};
+
+// A flat rate of r over N installments costs roughly this as a true APR.
+const flatToEffectiveApr = (rate, term) => (term > 1 ? (rate * 2 * term) / (term + 1) : rate);
+
 const defaultInputs = {
   startMonth: 0,
   startYear: new Date().getFullYear(),
@@ -20,6 +31,7 @@ const defaultInputs = {
   avgLoanSize: 5000,
   avgLoanTermMonths: 12,
   annualInterestRate: 18,
+  interestMethod: 'reducing',
   originationFeePct: 2,
   nplRate: 3,
   recoveryRate: 30,
@@ -51,6 +63,12 @@ export default function LoanForecast() {
     const rows = [];
     let disbursements = inputs.initialDisbursements;
     let portfolioBalance = 0; // outstanding loan book
+    const term = Math.max(1, inputs.avgLoanTermMonths);
+    const monthlyRate = inputs.annualInterestRate / 100 / 12;
+    const isFlat = (inputs.interestMethod || 'reducing') === 'flat';
+    // Disbursement cohorts: a flat-rate loan keeps charging interest on its
+    // ORIGINAL principal until its term ends, so we track them individually.
+    const cohorts = [];
 
     for (let i = 0; i < inputs.months; i++) {
       const monthIdx = (inputs.startMonth + i) % 12;
@@ -62,10 +80,21 @@ export default function LoanForecast() {
       }
 
       const newDisbursedAmount = disbursements * inputs.avgLoanSize;
-      const monthlyRepayment = portfolioBalance / inputs.avgLoanTermMonths;
+      cohorts.push({ principal: newDisbursedAmount, age: 0 });
+
+      // A cohort disbursed this month (age 0) accrues interest immediately and
+      // pays its `term` equal principal installments over ages 1..term, so it
+      // amortises to zero exactly at the end of its tenure.
+      let monthlyRepayment = 0;
+      let activePrincipal = 0;
+      for (const c of cohorts) {
+        if (c.age < term) activePrincipal += c.principal;
+        if (c.age >= 1 && c.age <= term) monthlyRepayment += c.principal / term;
+      }
       portfolioBalance = Math.max(0, portfolioBalance + newDisbursedAmount - monthlyRepayment);
 
-      const interestIncome = portfolioBalance * (inputs.annualInterestRate / 100 / 12);
+      // Flat: original principal × rate. Reducing: outstanding balance × rate.
+      const interestIncome = (isFlat ? activePrincipal : portfolioBalance) * monthlyRate;
       const originationFees = newDisbursedAmount * (inputs.originationFeePct / 100);
       const grossRevenue = interestIncome + originationFees;
 
@@ -82,8 +111,11 @@ export default function LoanForecast() {
       const nim = portfolioBalance > 0 ? ((interestIncome - costOfFunds) / portfolioBalance) * 100 : 0;
       const roe = grossRevenue > 0 ? (profit / grossRevenue) * 100 : 0;
 
+      for (const c of cohorts) c.age++;
+
       rows.push({
         label, disbursements, newDisbursedAmount, portfolioBalance, interestIncome,
+        activePrincipal, monthlyRepayment,
         originationFees, grossRevenue, netRevenue, nplProvision, netCreditLoss,
         costOfFunds, operatingCost, totalCost, profit, nim, roe,
       });
@@ -177,6 +209,16 @@ export default function LoanForecast() {
           <InputField label="Disbursement Growth Rate (%)" value={inputs.disbursementsGrowthRate} onChange={v => set('disbursementsGrowthRate', v)} step={0.5} />
           <InputField label="Avg Loan Size ($)" value={inputs.avgLoanSize} onChange={v => set('avgLoanSize', v)} />
           <InputField label="Avg Loan Term (Months)" value={inputs.avgLoanTermMonths} onChange={v => set('avgLoanTermMonths', v)} min={1} />
+          <div>
+            <label style={{ display: 'block', color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>Interest Method</label>
+            <select
+              className="input"
+              value={inputs.interestMethod || 'reducing'}
+              onChange={e => setInputs(prev => ({ ...prev, interestMethod: e.target.value }))}
+            >
+              {Object.entries(INTEREST_METHODS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+            </select>
+          </div>
           <InputField label="Annual Interest Rate (%)" value={inputs.annualInterestRate} onChange={v => set('annualInterestRate', v)} step={0.5} />
           <InputField label="Origination Fee (%)" value={inputs.originationFeePct} onChange={v => set('originationFeePct', v)} step={0.1} />
           <InputField label="NPL Rate (% of portfolio/yr)" value={inputs.nplRate} onChange={v => set('nplRate', v)} step={0.1} />
@@ -184,6 +226,17 @@ export default function LoanForecast() {
           <InputField label="Cost of Funds (% / yr)" value={inputs.costOfFundsPct} onChange={v => set('costOfFundsPct', v)} step={0.5} />
           <InputField label="Base Operating Cost ($)" value={inputs.operatingCostBase} onChange={v => set('operatingCostBase', v)} />
           <InputField label="Cost per Loan Disbursed ($)" value={inputs.operatingCostPerLoan} onChange={v => set('operatingCostPerLoan', v)} step={1} />
+        </div>
+        <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--surface2)', borderRadius: 8, fontSize: 11, color: 'var(--muted)' }}>
+          <strong style={{ color: 'var(--text)' }}>{INTEREST_METHODS[inputs.interestMethod || 'reducing'].label}:</strong>{' '}
+          {INTEREST_METHODS[inputs.interestMethod || 'reducing'].hint}
+          {(inputs.interestMethod || 'reducing') === 'flat' && (
+            <span>
+              {' '}A flat <strong>{fmtPct(inputs.annualInterestRate)}</strong> over {inputs.avgLoanTermMonths} months is roughly{' '}
+              <strong style={{ color: 'var(--amber)' }}>{fmtPct(flatToEffectiveApr(inputs.annualInterestRate, inputs.avgLoanTermMonths))} APR</strong>{' '}
+              on a reducing-balance basis, because the borrower keeps paying on principal they have already repaid.
+            </span>
+          )}
         </div>
       </Section>
 
