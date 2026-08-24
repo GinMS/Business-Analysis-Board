@@ -34,7 +34,7 @@ export const parseAmount = (raw) => {
 
 // Grid cell that reads in millions but edits the exact figure on focus.
 // Typing accepts a plain number, or an explicit 1.2M / 850K suffix.
-function MoneyCell({ value, onChange }) {
+function MoneyCell({ value, onChange, style }) {
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState('');
   const v = Number(value) || 0;
@@ -44,6 +44,7 @@ function MoneyCell({ value, onChange }) {
       type="text"
       inputMode="decimal"
       placeholder="0.00"
+      style={style}
       title={v ? `RM ${v.toLocaleString('en-MY')}` : 'Shown in millions — click to edit the exact figure'}
       value={focused ? draft : (v ? (v / 1e6).toFixed(2) : '')}
       onFocus={() => { setDraft(v ? String(v) : ''); setFocused(true); }}
@@ -302,12 +303,16 @@ export default function BusinessPerformance() {
               <div style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 6 }}>{k.label}</div>
               <div style={{ color: 'var(--text)', fontSize: 22, fontWeight: 700 }}>
                 {k.manual
-                  ? <input className="cell-input" style={{ fontSize: 20, fontWeight: 700, width: 140, textAlign: 'left' }} type="number" value={kpiManual[k.key] || ''} placeholder="0" onChange={e => setKpiActual(k.key, e.target.value)} />
+                  ? (k.kind === 'money'
+                      ? <MoneyCell value={kpiManual[k.key]} onChange={v => setKpiActual(k.key, v)} style={{ fontSize: 20, fontWeight: 700, width: 140, textAlign: 'left' }} />
+                      : <input className="cell-input" style={{ fontSize: 20, fontWeight: 700, width: 140, textAlign: 'left' }} type="number" value={kpiManual[k.key] || ''} placeholder="0" onChange={e => setKpiActual(k.key, e.target.value)} />)
                   : fmtVal(k.kind, a)}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: 'var(--muted)' }}>
-                <span>Target</span>
-                <input className="cell-input" style={{ width: 90, textAlign: 'left' }} type="number" value={targets.annual?.[k.key] || ''} placeholder="0" onChange={e => setAnnualTarget(k.key, e.target.value)} />
+                <span>Target{k.kind === 'money' ? ' (RM mil)' : ''}</span>
+                {k.kind === 'money'
+                  ? <MoneyCell value={targets.annual?.[k.key]} onChange={v => setAnnualTarget(k.key, v)} style={{ width: 90, textAlign: 'left' }} />
+                  : <input className="cell-input" style={{ width: 90, textAlign: 'left' }} type="number" value={targets.annual?.[k.key] || ''} placeholder="0" onChange={e => setAnnualTarget(k.key, e.target.value)} />}
               </div>
               <div style={{ height: 6, borderRadius: 3, background: 'var(--surface2)', marginTop: 8, overflow: 'hidden' }}>
                 <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`, background: barColor }} />
